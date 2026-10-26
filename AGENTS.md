@@ -53,6 +53,9 @@ isolation test). Text fields are iframes: reach them with
 Playwright starts everything it needs (`playwright.config.ts`): the backend on 18787 with an
 in-memory DB, a proxy on 18788 (the extension's API; `/_test/network` cuts it to simulate
 offline), the fake Resend API on 18901 and fixture pages on 18902. Run `HEADED=1` to watch.
+Fixture variants: `/csp/…` (strict CSP), `/sandbox/…` (CSP `sandbox`), and
+`http://insecure.test:18902/…` (mapped to 127.0.0.1 by the browser, so pages are insecure
+contexts; `localhost` counts as secure and hides plain-HTTP bugs).
 
 ## Deploy
 
