@@ -46,10 +46,12 @@ function stripSignOff(text: string): string {
   return text;
 }
 
-// Where a client's quoted history starts in HTML (Outlook web/desktop/new,
-// Apple Mail, Yahoo, Thunderbird): everything from there on is old content.
-// Outlook's history isn't inside one element, so skipping the header element
-// alone would leave the previous message (our notification) behind.
+// Where Outlook's quoted history starts in HTML (web, desktop, new Outlook):
+// everything from there on is old content. Its history isn't inside one
+// element, so skipping the header element alone would leave the previous
+// message (our notification) behind. Bounded quotes (<blockquote>, as Apple
+// Mail and Thunderbird use) aren't cut: they become "> " lines, so answers
+// written below or between them are kept like in plain text.
 const HTML_HISTORY_MARKERS: RegExp[] = [
   /<div[^>]*\bid=["']?appendonsend\b/i,
   /<div[^>]*\bid=["']?divRplyFwdMsg\b/i,
@@ -57,9 +59,7 @@ const HTML_HISTORY_MARKERS: RegExp[] = [
   /<div[^>]*\bid=["']?mail-editor-reference-message-container\b/i,
   /<div[^>]*\bclass=["']?[^"'>]*\bOutlookMessageHeader\b/i,
   /<div[^>]*style=["'][^"']*border-top:\s*solid\s+#E1E1E1/i,
-  /<blockquote[^>]*\btype=["']?cite\b/i,
   /<div[^>]*\bclass=["']?[^"'>]*\byahoo_quoted\b/i,
-  /<div[^>]*\bclass=["']?[^"'>]*\bmoz-cite-prefix\b/i,
 ];
 
 function cutHtmlHistory(html: string): string {
@@ -71,20 +71,30 @@ function cutHtmlHistory(html: string): string {
   return html.slice(0, cut);
 }
 
+/**
+ * Drop document wrappers (doctype, html, head, body): a quoted message can be
+ * a whole HTML document nested inside a <blockquote>, and nested wrappers make
+ * the converter lift its content out of the quote.
+ */
+function unwrapDocuments(html: string): string {
+  return html
+    .replace(/<!doctype[^>]*>/gi, '')
+    .replace(/<head\b[\s\S]*?<\/head>/gi, '')
+    .replace(/<\/?(html|body)\b[^>]*>/gi, '');
+}
+
 function htmlToText(html: string): string {
-  return convert(cutHtmlHistory(html), {
+  return convert(unwrapDocuments(cutHtmlHistory(html)), {
     wordwrap: false,
     selectors: [
       { selector: 'a', options: { ignoreHref: true } },
       { selector: 'img', format: 'skip' },
-      { selector: 'blockquote', format: 'skip' },
       { selector: 'div.gmail_quote', format: 'skip' },
       { selector: 'div.gmail_signature', format: 'skip' },
       { selector: 'div.gmail_extra', format: 'skip' },
       { selector: 'div#divRplyFwdMsg', format: 'skip' },
       { selector: 'div#appendonsend', format: 'skip' },
       { selector: 'div.yahoo_quoted', format: 'skip' },
-      { selector: 'div.moz-cite-prefix', format: 'skip' },
       { selector: 'style', format: 'skip' },
       { selector: 'head', format: 'skip' },
     ],

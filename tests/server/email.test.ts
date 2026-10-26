@@ -158,6 +158,32 @@ describe('extractReply', () => {
       expect(out).toBe('Yes, Friday works.');
     }
   });
+  it('HTML-only Apple Mail / Thunderbird replies: answers below or between <blockquote> quotes are kept', async () => {
+    const { notificationEmail } = await import('../../src/server/email/templates');
+    const n = notificationEmail({
+      threadId: 't1',
+      pageTitle: 'A page',
+      pageUrl: 'https://example.com/a',
+      threadLink: 'https://example.com/a#margin-comments=t1',
+      quote: 'The anchored sentence',
+      replyAuthor: 'Bob',
+      replyBody: 'Can we ship on Friday?',
+      previous: { author: 'Alice', body: 'An earlier comment' },
+      recipientStartedThread: true,
+      unsubscribeLink: 'https://mc.test/unsubscribe?u=1&s=2',
+      canReplyByEmail: true,
+    });
+    const bottom = '<div>On Mon, Oct 26, 2026, at 15:00, Bob &lt;bob@example.com&gt; wrote:</div><blockquote type="cite"><div>Can we ship Friday?</div></blockquote><div>Yes, Friday works.</div>';
+    expect(extractReply(null, bottom)).toBe('Yes, Friday works.');
+    const inline =
+      '<div>Answers below.</div><br><div>On Mon, Bob wrote:</div><blockquote type="cite"><div>Can we ship Friday?</div></blockquote><div>Yes, Friday works.</div>' +
+      '<blockquote type="cite"><div>Which region?</div></blockquote><div>London.</div>';
+    expect(extractReply(null, inline)).toBe('Answers below.\n\nYes, Friday works.\n\nLondon.');
+    const top = `<div>Sounds good.</div><div><br><blockquote type="cite"><div>On Mon, Oct 26, 2026, Margin Comments wrote:</div>${n.html}</blockquote></div>`;
+    expect(extractReply(null, top)).toBe('Sounds good.');
+    const thunderbird = `<p>Thanks!</p><div class="moz-cite-prefix">On 10/26/26 3:00 PM, Margin Comments wrote:<br></div><blockquote type="cite" cite="mid:x@y">${n.html}</blockquote>`;
+    expect(extractReply(null, thunderbird)).toBe('Thanks!');
+  });
   it('returns empty for a quote-only reply', () => {
     expect(extractReply('\n\nOn Mon, Oct 26, 2026 Margin <x@y.z> wrote:\n> hi', null)).toBe('');
   });

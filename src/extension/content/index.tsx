@@ -557,7 +557,8 @@ class MarginComments implements Actions {
     if (id) {
       // A plain click on highlighted link text opens the thread instead of
       // navigating; modified clicks (new tab, etc.) still follow the link.
-      const link = (e.target as Element | null)?.closest?.('a[href]');
+      // composedPath: a link inside a web component (the target is retargeted to its host).
+      const link = e.composedPath().find(n => n instanceof Element && n.matches('a[href]'));
       if (link && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.defaultPrevented) e.preventDefault();
       if (ui.composer && !this.composerText.trim()) this.store.setUi({ composer: null });
       if (!ui.composer) this.openThread(id);

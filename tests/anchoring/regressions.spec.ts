@@ -272,3 +272,22 @@ test('text inside web components (open shadow roots, slots) is described and anc
   });
 });
 
+test("a short quote in a component that starts with a <style> survives CSS changes", async ({ page }) => {
+  await load(page, `<main><p>Words before the widget.</p><x-w></x-w><p>Words after the widget.</p></main>`);
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const root = document.querySelector('x-w')!.attachShadow({ mode: 'open' });
+    root.innerHTML = '<style>p { color: rgb(10, 20, 30); font-size: 16px; }</style><p>Hello there</p>';
+    const t = root.querySelector('p')!.firstChild as Text;
+    const r = document.createRange();
+    r.selectNodeContents(t);
+    const { selectors } = mc.describeRange(document.body, r);
+    // The component ships more CSS (positions shift); the text is unchanged.
+    root.querySelector('style')!.textContent += ' h1 { margin: 0; } .x { padding: 4px 8px; }';
+    const out = mc.anchorSelectors(document.body, selectors);
+    return { prefix: selectors.find((s: any) => s.type === 'TextQuoteSelector').prefix, anchored: out && out.range.toString() };
+  });
+  expect(res.prefix).not.toContain('color');
+  expect(res.anchored).toBe('Hello there');
+});
+

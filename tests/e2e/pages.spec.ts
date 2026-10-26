@@ -316,8 +316,27 @@ test('comments on text inside web components (open shadow roots)', async ({ alic
   const b = await bob.open(path);
   await bob.signIn(b);
   await expect.poll(() => highlightTexts(b)).toEqual([quote]);
+  // Highlighted link text inside the component opens the thread instead of navigating.
+  await a.evaluate(() => {
+    const t = document.querySelector('article-card')!.shadowRoot!.getElementById('shadow-link')!.firstChild as Text;
+    getSelection()!.setBaseAndExtent(t, 0, t, t.data.length);
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  });
+  await a.locator('[data-testid=adder]').click();
+  await input.fill('On a link');
+  await input.press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['On a link']);
+  await a.keyboard.press('Escape');
+  const linkAt = await a.evaluate(() => {
+    const b = document.querySelector('article-card')!.shadowRoot!.getElementById('shadow-link')!.getBoundingClientRect();
+    return [b.left + 30, b.top + b.height / 2] as [number, number];
+  });
+  await a.mouse.click(...linkAt);
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['On a link']);
+  expect(a.url()).not.toContain('#went-away');
+  await a.keyboard.press('Escape');
   // Light DOM text around (and slotted into) the component still works.
   await createThread(a, 'Light paragraph after the component', 'Below it');
-  await expect.poll(async () => (await highlightTexts(a)).sort()).toEqual([quote, 'Light paragraph after the component'].sort());
+  await expect.poll(async () => (await highlightTexts(a)).sort()).toEqual([quote, 'A link inside the component with words', 'Light paragraph after the component'].sort());
 });
 

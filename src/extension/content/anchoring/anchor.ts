@@ -62,6 +62,8 @@ export class TextIndex {
   /** Every text node walked, in order, with its raw start offset. */
   private readonly nodes: Text[] = [];
   private readonly starts: number[] = [];
+  /** Per node: script/style/… text, not part of the rendered text. */
+  private readonly skipped: boolean[] = [];
   private nodeIndex: Map<Text, number> | null = null;
   /** Open shadow roots whose content is part of the text (to observe for changes). */
   readonly shadowRoots: ShadowRoot[] = [];
@@ -76,6 +78,7 @@ export class TextIndex {
       const data = node.data;
       this.nodes.push(node);
       this.starts.push(raw);
+      this.skipped.push(skipped);
       if (!skipped) {
         if (n + data.length > offsets.length) {
           const bigger = new Int32Array(Math.max(offsets.length * 2, n + data.length));
@@ -201,6 +204,29 @@ export class TextIndex {
     return k === undefined ? null : this.starts[k] + offset;
   }
 
+  /**
+   * Up to `count` characters of rendered text (script/style excluded, as in
+   * matching) just before or after a raw offset.
+   */
+  renderedAround(raw: number, count: number, side: 'before' | 'after'): string {
+    if (this.nodes.length === 0) return '';
+    let out = '';
+    let k = this.nodeAt(Math.max(0, Math.min(raw, this.rawLength - 1)));
+    if (side === 'before') {
+      for (; k >= 0 && out.length < count; k--) {
+        if (this.skipped[k]) continue;
+        const data = this.nodes[k].data.slice(0, Math.max(0, raw - this.starts[k]));
+        out = data + out;
+      }
+      return out.slice(-count);
+    }
+    for (; k < this.nodes.length && out.length < count; k++) {
+      if (this.skipped[k]) continue;
+      out += this.nodes[k].data.slice(Math.max(0, raw - this.starts[k]));
+    }
+    return out.slice(0, count);
+  }
+
   /** The raw text between two raw offsets (as `textContent` would have it). */
   rawSlice(start: number, end: number): string {
     start = Math.max(0, start);
@@ -318,8 +344,10 @@ function describeInShadow(root: Element, range: Range): Selector[] | null {
     {
       type: 'TextQuoteSelector',
       exact: index.rawSlice(start, end),
-      prefix: index.rawSlice(start - CONTEXT, start),
-      suffix: index.rawSlice(end, end + CONTEXT),
+      // Context from rendered text (components often start with a <style>),
+      // as matching sees it.
+      prefix: index.renderedAround(start, CONTEXT, 'before'),
+      suffix: index.renderedAround(end, CONTEXT, 'after'),
     },
   ];
 }

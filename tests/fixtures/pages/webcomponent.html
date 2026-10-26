@@ -9,7 +9,7 @@ customElements.define('article-card', class extends HTMLElement {
   constructor() {
     super();
     const r = this.attachShadow({ mode: 'open' });
-    r.innerHTML = '<style>p{margin:0 0 12px}</style><h2>Inside the shadow</h2><p id="shadow-p">Shadow paragraph rendered by a web component with its own text.</p><slot name="extra"></slot>';
+    r.innerHTML = '<style>p{margin:0 0 12px}</style><h2>Inside the shadow</h2><p id="shadow-p">Shadow paragraph rendered by a web component with its own text.</p><p><a id="shadow-link" href="#went-away">A link inside the component with words</a></p><slot name="extra"></slot>';
   }
   // Re-render the paragraph (same text, new nodes), as frameworks do.
   rerender() {
