@@ -1,0 +1,40 @@
+# Fly.io config for the margin-comments backend (one machine; SQLite on a volume).
+app = "margin-comments"
+primary_region = "lhr"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  HOST = "0.0.0.0"
+  PUBLIC_URL = "https://margin-comments.fly.dev"
+  DATABASE_PATH = "/data/margin-comments.db"
+  TRUST_PROXY = "true"
+  EXTENSION_IDS = "igipapgffolpgikiojpjbpdngefekkbg"
+
+[[mounts]]
+  source = "data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Live updates use WebSockets: keep the machine running.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "connections"
+    soft_limit = 800
+    hard_limit = 1000
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
