@@ -336,3 +336,15 @@ Reviewers B and C found nothing material. All three findings concern round 24's 
 
 Anchoring regression "hidden slots and textarea values stay out of selectors; display:contents text can be commented on" covers all three; verified to fail on the previous code. Corpus unchanged.
 
+## Round 26 — full repository (2026-10-26)
+
+Reviewer B found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **Text in a `display:contents` element with `visibility:hidden` was judged only by its parent and could enter stored context** | Fixed | Visibility is the computed visibility of the element the text renders in (inheritance and overrides right), separate from whether that element is rendered (`checkVisibility`, looking through `display:contents`) |
+| A2 | **Text directly inside a closed `<details>` (outside `<summary>`) was judged by the `<details>`, which is visible** | Fixed | A closed `<details>` renders only its summary, also through `display:contents` children |
+| C1 | "Continue" on another tab's draft, then typing, overwrote this tab's own different draft for the same selection | Fixed | Before continuing, this tab's own different draft is set aside under a slot no tab owns (still listed). e2e "continuing another tab's draft keeps this tab's own draft…" |
+
+Anchoring regression "hidden display:contents text and closed <details> bodies stay out of selectors" (also checks a visible override and an open `<details>`). All verified to fail on the previous code; corpus unchanged.
+

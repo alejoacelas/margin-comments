@@ -38,24 +38,42 @@ export type AnchorResult = {
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA']);
 
 /**
- * Is an element's content shown? `checkVisibility` (display:none ancestors,
- * visibility:hidden, closed <details>, hidden slots), except for
- * `display:contents` elements (default for <slot>), which have no box of
- * their own: their rendering parent decides.
+ * Is a node (text, or an element's content) shown to the reader? Two parts:
+ * the visibility of the element it renders in (computed, so inheritance and
+ * `visibility:visible` overrides are right), and whether that element is
+ * rendered at all: `checkVisibility` (display:none ancestors, content hidden
+ * by a closed <details> or content-visibility), looking through
+ * `display:contents` elements (no box of their own; default for <slot>), and
+ * a closed <details> shows only its <summary> (text directly inside it has
+ * no element of its own for checkVisibility to judge).
  */
-export function contentShown(el: Element, cache?: Map<Element, boolean>): boolean {
+export function nodeShown(node: Node, cache?: Map<Element, boolean>): boolean {
+  const el = renderingParent(node);
+  if (!el) return true;
+  if (closedDetailsHides(el, node)) return false;
+  if (getComputedStyle(el).visibility !== 'visible') return false;
+  return rendered(el, cache);
+}
+
+function rendered(el: Element, cache?: Map<Element, boolean>): boolean {
   const cached = cache?.get(el);
   if (cached !== undefined) return cached;
   let shown: boolean;
   if (typeof el.checkVisibility !== 'function') shown = true;
   else if (getComputedStyle(el).display === 'contents') {
     const parent = renderingParent(el);
-    shown = parent ? contentShown(parent, cache) : true;
+    shown = !parent || (!closedDetailsHides(parent, el) && rendered(parent, cache));
   } else {
-    shown = el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: false } as CheckVisibilityOptions);
+    shown = el.checkVisibility({ contentVisibilityAuto: false } as CheckVisibilityOptions);
   }
   cache?.set(el, shown);
   return shown;
+}
+
+/** A closed <details> renders only its (first) <summary>. */
+function closedDetailsHides(parent: Element, child: Node): boolean {
+  if (parent.localName !== 'details' || (parent as HTMLDetailsElement).open) return false;
+  return !(child instanceof Element && child.localName === 'summary' && parent.querySelector(':scope > summary') === child);
 }
 
 /** Where a node renders: its slot if slotted into a web component, else its parent (or shadow host). */
@@ -109,13 +127,9 @@ export class TextIndex {
     // treated like script text: counted in raw offsets, but never matched,
     // quoted or used as context (selectors are stored and shown to everyone).
     const shownCache = new Map<Element, boolean>();
-    const rendered = (node: Text): boolean => {
-      const el = renderingParent(node);
-      return el ? contentShown(el, shownCache) : true;
-    };
     const add = (node: Text, skippedTag: boolean) => {
       const data = node.data;
-      const skipped = skippedTag || (data.trim() !== '' && !rendered(node));
+      const skipped = skippedTag || (data.trim() !== '' && !nodeShown(node, shownCache));
       this.nodes.push(node);
       this.starts.push(raw);
       this.skipped.push(skipped);
@@ -640,8 +654,8 @@ export function isVisible(range: Range): boolean {
   }
   if (!boxed) return false;
   for (const node of [range.startContainer, range.endContainer]) {
-    const el = node instanceof Element ? node : renderingParent(node);
-    if (el && !contentShown(el)) return false;
+    const shown = node instanceof Element ? getComputedStyle(node).visibility === 'visible' && rendered(node) : nodeShown(node);
+    if (!shown) return false;
   }
   return true;
 }

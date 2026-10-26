@@ -83,6 +83,8 @@ export type RpcMethods = {
   saveDraft: { params: { draft: Draft }; result: { ok: true } };
   /** Delete this tab's draft for `key`, and/or the user's drafts for `key` with exactly these texts. */
   deleteDraft: { params: { key: string; instanceId?: string; texts?: string[] }; result: { ok: true } };
+  /** Before this tab edits another draft for `key`: keep its own, different draft under a slot of its own. */
+  setAsideDraft: { params: { key: string; instanceId: string; keepText: string }; result: { ok: true } };
   refresh: { params: Record<string, never>; result: { ok: true } };
   inputOpen: { params: { sid: string; init: InputInit }; result: { ok: true } };
   inputCommand: { params: { sid: string; cmd: InputCommand }; result: { ok: true } };

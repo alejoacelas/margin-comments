@@ -743,3 +743,36 @@ test('keys typed right after Enter never end up in the comment or in a phantom d
   for (const row of await a.locator('[data-testid=draft-row]').all()) await expect(row).not.toContainText('Posted text');
 });
 
+test("continuing another tab's draft keeps this tab's own draft for the same selection", async ({ alice }) => {
+  const path = uniquePath('article');
+  const make = async (text: string) => {
+    const p = await alice.open(path);
+    await selectText(p, 'Social highlights for friends');
+    await p.locator('[data-testid=adder]').click();
+    const input = p.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+    await expect(input).toBeFocused();
+    await p.waitForTimeout(200);
+    await input.fill(text);
+    await expect(input).toHaveValue(text);
+    await p.waitForTimeout(700);
+    return p;
+  };
+  const first = await alice.open(path);
+  await alice.signIn(first);
+  await first.close();
+  const b = await make('Draft typed in tab B');
+  await b.close();
+  const a = await make('Draft typed in tab A');
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=draft-row]').filter({ hasText: 'Draft typed in tab B' }).getByRole('button', { name: 'Continue' }).click();
+  const input = a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+  await expect(input).toHaveValue('Draft typed in tab B');
+  await input.press('End');
+  await input.pressSequentially(', revised in A');
+  await a.waitForTimeout(800);
+  await a.reload();
+  await alice.openSidebar(a);
+  await expect(a.locator('[data-testid=draft-row]').filter({ hasText: 'Draft typed in tab A' })).toHaveCount(1);
+  await expect(a.locator('[data-testid=draft-row]').filter({ hasText: 'Draft typed in tab B, revised in A' })).toHaveCount(1);
+});
+

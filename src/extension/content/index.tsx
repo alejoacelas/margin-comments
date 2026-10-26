@@ -912,6 +912,13 @@ class MarginComments implements Actions {
       this.toast("That text isn't on the page anymore. Copy your draft instead.");
       return;
     }
+    // This tab's own, different draft for the same selection would be
+    // overwritten as soon as the continued one is edited here: set it aside
+    // (saved first if still pending). Port messages keep their order, so this
+    // happens before the first save of the continued text.
+    const slot = this.slot(draft.key);
+    if (this.draftTimers.get(slot)) this.flushDraft(slot);
+    void this.port.call('setAsideDraft', { key: draft.key, instanceId: this.instanceId, keepText: draft.text }).catch(() => {});
     this.composerText = draft.text;
     this.store.setUi({
       activeThreadId: null,

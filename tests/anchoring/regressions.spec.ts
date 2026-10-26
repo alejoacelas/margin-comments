@@ -440,3 +440,35 @@ test('hidden slots and textarea values stay out of selectors; display:contents t
   expect(res.cAnchored).toBe('Visible article text to annotate.');
 });
 
+test('hidden display:contents text and closed <details> bodies stay out of selectors', async ({ page }) => {
+  for (const after of [
+    '<span style="display:contents;visibility:hidden">private diagnosis 1234</span>',
+    '<details><summary>More</summary>private diagnosis 1234</details>',
+    '<details><summary>More</summary><span style="display:contents">private diagnosis 1234</span></details>',
+  ]) {
+    await load(page, `<main><p id="p">Public article text.</p>${after}</main>`);
+    const json = await page.evaluate(() => {
+      const mc = (window as any).__mc;
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById('p')!);
+      return JSON.stringify(mc.describeRange(document.body, r).selectors);
+    });
+    expect(json, after).not.toContain('diagnosis');
+  }
+  // Still page text: a visible override inside hidden visibility, and an open <details> body.
+  await load(
+    page,
+    `<main><div style="visibility:hidden"><span id="v" style="display:contents;visibility:visible">Shown despite a hidden parent.</span></div><details open><summary>More</summary>Body of an open details element.</details></main>`,
+  );
+  const quotes = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const describe = (n: Node) => {
+      const r = document.createRange();
+      r.selectNodeContents(n);
+      return mc.describeRange(document.body, r)?.quote ?? null;
+    };
+    return [describe(document.getElementById('v')!), describe(document.querySelector('details')!.lastChild!)];
+  });
+  expect(quotes).toEqual(['Shown despite a hidden parent.', 'Body of an open details element.']);
+});
+

@@ -515,6 +515,22 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     broadcastState();
     return { ok: true as const };
   },
+  async setAsideDraft({ key, instanceId, keepText }) {
+    const own = draftSlot(key, instanceId);
+    const draft = own ? drafts[own] : undefined;
+    if (own && draft && normalizedText(draft.text) !== normalizedText(keepText)) {
+      // A slot no open tab owns: listed under "Unsent drafts" like a closed tab's.
+      const asideId = `${instanceId}~${Date.now().toString(36)}`;
+      const aside = draftSlot(key, asideId, draft.userId);
+      if (aside) {
+        drafts[aside] = { ...draft, instanceId: asideId, updatedAt: Date.now() };
+        delete drafts[own];
+        await persist(['drafts']);
+        broadcastState();
+      }
+    }
+    return { ok: true as const };
+  },
   async deleteDraft({ key, instanceId, texts }) {
     if (!session) return { ok: true as const };
     let changed = false;

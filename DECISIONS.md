@@ -210,7 +210,9 @@ Choices made while building this without supervision, with the reasoning.
 - **Drafts** saved as you type (debounced), kept until the worker confirms, flushed on
   `pagehide`. Drafts belong to an account and to the tab that wrote them (one slot per tab), so
   tabs never overwrite each other; an editor restores its own tab's draft, else the newest one,
-  and the others are listed under "Unsent drafts". Cancel/Discard delete by the text the user was
+  and the others are listed under "Unsent drafts". "Continue" on another draft first sets this
+  tab's own different draft for that key aside (a slot no tab owns), so editing never
+  overwrites it. Cancel/Discard delete by the text the user was
   looking at, never a different text, and never the draft of another tab that is still open. A
   change is only ever queued under the account it was typed in.
 - **Worker lifecycle:** a 20 s ping keeps the worker alive while pages are open; content scripts
