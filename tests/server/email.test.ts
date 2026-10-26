@@ -109,6 +109,27 @@ describe('extractReply', () => {
     const forwarded = 'On Mon, Margin Comments wrote:\nBob replied on "Page"\n\nquote text\n\nReply to this email to respond in the thread.';
     expect(extractReply(forwarded, null)).toBe('');
   });
+  it("an Outlook reply quoting our notification unquoted posts only the new text", async () => {
+    const { notificationEmail } = await import('../../src/server/email/templates');
+    const n = notificationEmail({
+      threadId: 't1',
+      pageTitle: 'A page',
+      pageUrl: 'https://example.com/a',
+      threadLink: 'https://example.com/a#margin-comments=t1',
+      quote: 'The anchored sentence',
+      replyAuthor: 'Bob',
+      replyBody: 'Can we ship on Friday?',
+      previous: { author: 'Alice', body: 'An earlier comment' },
+      recipientStartedThread: true,
+      unsubscribeLink: 'https://mc.test/unsubscribe?u=1&s=2',
+      canReplyByEmail: true,
+    });
+    const header = 'From: Margin Comments <notifications@mail.test>\nSent: Monday, October 26, 2026 3:00 PM\nTo: Alice\nSubject: ' + n.subject;
+    for (const sep of ['________________________________\n', '', '-----Original Message-----\n']) {
+      const reply = `Confirmed, Friday works.\n\n${sep}${header}\n\n${n.text}`;
+      expect(extractReply(reply, null), JSON.stringify(sep)).toBe('Confirmed, Friday works.');
+    }
+  });
   it('returns empty for a quote-only reply', () => {
     expect(extractReply('\n\nOn Mon, Oct 26, 2026 Margin <x@y.z> wrote:\n> hi', null)).toBe('');
   });

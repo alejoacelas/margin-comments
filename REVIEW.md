@@ -241,3 +241,12 @@ Reviewers A and B found nothing material.
 |---|---------|---------|------------|
 | C1 | After a worker restart, "Continue typing" (sandboxed pages) opened a second input window, and typing in the first was silently dropped | Fixed | The worker recovers a reconnecting window's id from the port's sender, so it focuses that window; a field has one live copy, and a superseded copy is told it's closed (and stops reconnecting). Only an explicit close is final, so in-page frames still re-attach after the back/forward cache. e2e "on sandboxed pages, an input window survives a service worker restart and stays the only one"; verified to fail without the fix |
 
+## Round 17 — full repository (2026-10-26)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| B1 | **Outlook replies (history included unquoted under a `From:`/`Sent:` block) were cut at the header, but the `> quote` line inside our own notification made the parser treat the rest as inline answers, so earlier comments and the thread link were posted as the user's reply** | Fixed | Only "On … wrote:" headers (Gmail, Apple Mail, Thunderbird; localized) recover inline answers; after Outlook separators, forwards and our footer everything is cut. `email.test.ts` "an Outlook reply quoting our notification unquoted posts only the new text" (real notification text, three Outlook layouts); verified to fail without the fix |
+| A1 | The saved range/position shortcuts skipped the edited-repeat rule: an edited passage moved past its unchanged copy lost its thread to the copy | Fixed | Shortcut hits are checked against quote matching, which wins when it picks the thread's own edited passage; that rule now also accepts a passage with one side of its context intact (moves change the other). Corpus unchanged. Anchoring regression "an edited repeat that moved past its unchanged copy…"; verified to fail without the fix |
+

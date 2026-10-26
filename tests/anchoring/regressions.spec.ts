@@ -211,3 +211,24 @@ test('an edited repeat at the very start or end of the page stays on its own pas
   }
 });
 
+test('an edited repeat that moved past its unchanged copy keeps its thread (saved path points at the copy)', async ({ page }) => {
+  const q = 'The quick brown fox jumps over the lazy dog.';
+  await load(
+    page,
+    `<main><p id="a">Opening for the first part. <span>${q}</span> First part closes here.</p><p id="b">Another start in part two. <span>${q}</span> Part two ends with this.</p></main>`,
+  );
+  const res = await page.evaluate(q => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.querySelector('#b span')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    // Edit B and move it first: its saved XPath (/main/p[2]/span) now points at A's unchanged copy.
+    const b = document.getElementById('b')!;
+    b.querySelector('span')!.textContent = q.replace('quick', 'swift');
+    b.parentElement!.prepend(b);
+    const out = mc.anchorSelectors(document.body, selectors);
+    return out ? { id: (out.range.startContainer.parentElement!.closest('p') as HTMLElement).id, method: out.method } : null;
+  }, q);
+  expect(res).toEqual({ id: 'b', method: 'fuzzy' });
+});
+

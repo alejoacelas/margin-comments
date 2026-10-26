@@ -66,15 +66,22 @@ function htmlToText(html: string): string {
   });
 }
 
-const REPLY_HEADER_PATTERNS: RegExp[] = [
-  // Gmail / Apple Mail / Thunderbird: "On Mon, 26 Oct 2026 at 15:00, X <y> wrote:"
+// "On … wrote:" headers (Gmail, Apple Mail, Thunderbird): the history below
+// is quoted with ">", so unquoted lines among it are the sender's answers.
+const WROTE_PATTERNS: RegExp[] = [
+  // "On Mon, 26 Oct 2026 at 15:00, X <y> wrote:"
   /^\s*On\b.{0,400}\bwrote:\s*$/i,
   /^\s*Le\b.{0,400}\ba écrit\s*:\s*$/i,
   /^\s*El\b.{0,400}\bescribió:\s*$/i,
   /^\s*Am\b.{0,400}\bschrieb\b.{0,200}:\s*$/i,
   /^\s*Em\b.{0,400}\bescreveu:\s*$/i,
   /^\s*Il\b.{0,400}\bha scritto:\s*$/i,
-  // Outlook
+];
+
+// Separators after which everything is old content (Outlook and forwards
+// include the previous message unquoted, and our notification contains a
+// "> quote" line that mustn't be mistaken for quoting).
+const SEPARATOR_PATTERNS: RegExp[] = [
   /^\s*-{2,}\s*Original Message\s*-{2,}\s*$/i,
   /^\s*-{2,}\s*Forwarded message\s*-{2,}\s*$/i,
   /^\s*_{10,}\s*$/,
@@ -85,30 +92,29 @@ const REPLY_HEADER_PATTERNS: RegExp[] = [
 
 function cutQuotedHistory(body: string): string {
   const lines = body.split('\n');
-  const cut = findQuoteHeader(lines);
+  const { cut, wrote } = findQuoteHeader(lines);
   const top = lines.slice(0, cut).filter(l => !/^\s*>/.test(l));
-  if (cut === lines.length) return top.join('\n');
-  // Text after the header counts only when the history really is quoted
-  // with ">": then unquoted lines among/after it are bottom-posted or inline
-  // answers. Without ">" quoting (an Outlook-style or unquoted forward) the
-  // text after the header is old content.
+  if (cut === lines.length || !wrote) return top.join('\n');
+  // After an "On … wrote:" header, text counts only when the history really
+  // is quoted with ">": then unquoted lines among/after it are bottom-posted
+  // or inline answers. Without ">" quoting (an unquoted forward) the text
+  // after the header is old content.
   const after = lines.slice(cut + 1);
   const firstQuoted = after.findIndex(l => /^\s*>/.test(l));
   const answers = firstQuoted < 0 ? '' : cutQuotedHistory(after.slice(firstQuoted).filter(l => !/^\s*>/.test(l)).join('\n'));
   return [top.join('\n').trim(), answers.trim()].filter(Boolean).join('\n\n');
 }
 
-function findQuoteHeader(lines: string[]): number {
+/** Where the quoted history starts, and whether it's an "On … wrote:" header. */
+function findQuoteHeader(lines: string[]): { cut: number; wrote: boolean } {
   let cut = lines.length;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const joined = i + 1 < lines.length ? `${line} ${lines[i + 1]}` : line;
-    if (REPLY_HEADER_PATTERNS.some(re => re.test(line))) {
-      cut = i;
-      break;
-    }
+    if (WROTE_PATTERNS.some(re => re.test(line))) return { cut: i, wrote: true };
     // Header split across two lines by the client's wrapping.
-    if (/^\s*On\b/i.test(line) && !/wrote:\s*$/i.test(line) && /\bwrote:\s*$/i.test(joined) && joined.length < 500) {
+    if (/^\s*On\b/i.test(line) && !/wrote:\s*$/i.test(line) && /\bwrote:\s*$/i.test(joined) && joined.length < 500) return { cut: i, wrote: true };
+    if (SEPARATOR_PATTERNS.some(re => re.test(line))) {
       cut = i;
       break;
     }
@@ -126,7 +132,7 @@ function findQuoteHeader(lines: string[]): number {
       break;
     }
   }
-  return cut;
+  return { cut, wrote: false };
 }
 
 const SIGNATURE_LINES = [

@@ -201,24 +201,30 @@ export function anchorSelectors(
   const first = index.text.indexOf(exactStripped);
   const unique = first >= 0 && index.text.indexOf(exactStripped, first + 1) < 0;
 
+  let shortcut: AnchorResult | null = null;
   if (rangeSel && unique) {
     try {
       const r = RangeAnchor.fromSelector(root, rangeSel).toRange();
-      if (verifies(r)) return { range: r, method: 'range', quoteScore: 1 };
+      if (verifies(r)) shortcut = { range: r, method: 'range', quoteScore: 1 };
     } catch {
       // fall through
     }
   }
-  if (position && unique) {
+  if (!shortcut && position && unique) {
     try {
       const r = TextPositionAnchor.fromSelector(root, position).toRange();
-      if (verifies(r)) return { range: r, method: 'position', quoteScore: 1 };
+      if (verifies(r)) shortcut = { range: r, method: 'position', quoteScore: 1 };
     } catch {
       // fall through
     }
   }
 
-  return matchQuoteInIndex(index, quote, position?.start);
+  const viaQuote = matchQuoteInIndex(index, quote, position?.start);
+  // The saved range lands on the only exact copy, but that copy may be a
+  // repeat elsewhere while the thread's own passage was lightly edited (and
+  // moved): quote matching then picks the passage (see matchQuoteInIndex).
+  if (shortcut && viaQuote?.method === 'fuzzy') return viaQuote;
+  return shortcut ?? viaQuote;
 }
 
 type Candidate = {
@@ -252,8 +258,8 @@ function matchQuoteInIndex(
     candidates = matchQuoteCandidates(text, q, { prefix, suffix, hint });
     // An exact match whose surroundings don't fit may be a repeat of a
     // passage that was edited where the thread was. The passage itself wins
-    // only when it is clearly still there: lightly edited text in the
-    // original surroundings, against an exact copy in mostly different
+    // only when it is clearly still there: lightly edited text in (mostly)
+    // the original surroundings, against an exact copy in mostly different
     // surroundings. (A changed name in a list of similar items, say
     // setEndAfter -> setEndBefore, is a different item: the exact text wins.)
     const top = candidates[0];
@@ -262,7 +268,10 @@ function matchQuoteInIndex(
     const topContext = sides.length ? sides.reduce((a, b) => a + b, 0) / sides.length : 1;
     if (top && top.quoteScore === 1 && sides.length && q.length >= 20 && topContext < 0.5) {
       const near = matchQuoteCandidates(text, q, { prefix, suffix, hint }, true).find(c => c.quoteScore < 1);
-      if (near && near.quoteScore >= 0.85 && near.prefixScore >= 0.95 && near.suffixScore >= 0.95) candidates = [near, ...candidates];
+      // One side of its surroundings intact (the other may change when the
+      // passage moves), mostly intact overall.
+      const nearOk = near && near.quoteScore >= 0.85 && Math.max(near.prefixScore, near.suffixScore) >= 0.95 && (near.prefixScore + near.suffixScore) / 2 >= 0.75;
+      if (near && nearOk) candidates = [near, ...candidates];
     }
   }
   if (candidates.length === 0) return null;
