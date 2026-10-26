@@ -121,3 +121,13 @@ export type ServerLiveMessage =
 export function isUuid(v: unknown): v is string {
   return typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 }
+
+/**
+ * Control characters (other than tab and newline) never belong in stored
+ * text: they break size accounting (SQLite's LENGTH stops at NUL) and
+ * multiply in JSON escaping.
+ */
+export function stripControlChars(s: string): string {
+  return s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+}
+

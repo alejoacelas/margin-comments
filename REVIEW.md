@@ -400,3 +400,15 @@ Reviewer A found nothing material.
 
 Both verified to fail on the previous code.
 
+## Round 32 — full repository (2026-10-26)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Show/hide through custom attributes (`data-tab`, ARIA) wasn't observed, so a highlight stayed on a hidden tab panel indefinitely | Fixed | All attribute changes are observed (passes are throttled). Anchoring regression "a highlight follows a tab switch made with a custom attribute" |
+| B1 | **NUL characters defeated round 30's size accounting (SQLite `LENGTH` stops at NUL): a 72 MB thread page was possible again** | Fixed | Control characters are stripped from stored text; sizes are counted in bytes and doubled for JSON escaping. `email.test.ts` "control characters never reach stored text…" |
+| B2 | Email replies over 200,000 characters were silently cut and reported as posted | Fixed | Replies are read up to 2 MB (all parsing is linear); longer ones are refused as a whole and returned to the verified sender. `email.test.ts` "an email too long to read in full is refused…" |
+
+All verified to fail on the previous code.
+

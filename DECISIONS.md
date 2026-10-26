@@ -243,7 +243,10 @@ Choices made while building this without supervision, with the reasoning.
   buffer). Thread lists are paged by count (200) and by size (about 2 MB, at least one
   thread); the extension loads at most 20 pages / 2000 threads per page. Without these, one
   account could fill a page with huge threads and make every visit build tens of megabytes
-  (the 512 MB server ran out of memory in review).
+  (the 512 MB server ran out of memory in review). Sizes are measured in bytes, and stored text
+  never contains control characters (other than tab/newline), which would defeat the
+  accounting. Email replies are read up to 2 MB of text; a longer one is refused as a whole
+  (the verified sender gets it back), never posted in part.
 
 ## Groups
 

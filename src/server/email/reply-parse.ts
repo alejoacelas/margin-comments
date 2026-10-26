@@ -1,7 +1,10 @@
 import { convert } from 'html-to-text';
 
-/** Longer emails are cut (a reply posts at most a few comments' worth). */
-const MAX_INPUT = 200_000;
+/**
+ * Emails longer than this aren't parsed (every step is linear; this only
+ * bounds memory). Their reply is reported as truncated, not posted in part.
+ */
+const MAX_INPUT = 2_000_000;
 
 /**
  * Extract just the new text from an email reply: drop quoted history
@@ -13,8 +16,20 @@ const MAX_INPUT = 200_000;
  * everything below a "---" line as a signature.
  */
 export function extractReply(text: string | null, html: string | null): string {
-  let body = text && text.trim() ? text.slice(0, MAX_INPUT) : html ? htmlToText(html.slice(0, MAX_INPUT * 5)) : '';
+  return extractReplyChecked(text, html).text;
+}
+
+/** The new text of a reply, and whether the email was too long to read in full. */
+export function extractReplyChecked(text: string | null, html: string | null): { text: string; truncated: boolean } {
+  const useText = !!(text && text.trim());
+  const source = useText ? text! : html ?? '';
+  const truncated = source.length > MAX_INPUT;
+  let body = useText ? source.slice(0, MAX_INPUT) : source ? htmlToText(source.slice(0, MAX_INPUT)) : '';
   body = body.slice(0, MAX_INPUT).replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
+  return { text: finishReply(body), truncated };
+}
+
+function finishReply(body: string): string {
   body = cutQuotedHistory(body);
   let visible = cutSignatureDelimiter(body);
   visible = stripSignatureLines(visible);
@@ -120,7 +135,7 @@ function htmlToText(html: string): string {
   return convert(prepareHtml(html), {
     wordwrap: false,
     // Bounded work and output for hostile HTML (deep nesting, huge fan-out).
-    limits: { maxDepth: 40, maxChildNodes: 5000, maxInputLength: MAX_INPUT * 5 },
+    limits: { maxDepth: 40, maxChildNodes: 5000, maxInputLength: MAX_INPUT },
     selectors: [
       // Keep where a link goes ("my proposal [https://…]"), unless the text is the URL.
       { selector: 'a', options: { hideLinkHrefIfSameAsText: true } },

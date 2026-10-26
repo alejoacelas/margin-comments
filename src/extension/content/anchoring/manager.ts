@@ -314,10 +314,12 @@ export class AnchorManager {
   }
 }
 
+// Every attribute: pages show and hide content through any of them (class,
+// style, hidden, open, but also data-* / aria-* matched by their CSS). Passes
+// are throttled, so busy attributes only cost a flag.
 const OBSERVE: MutationObserverInit = {
   childList: true,
   subtree: true,
   characterData: true,
   attributes: true,
-  attributeFilter: ['class', 'style', 'hidden', 'open'],
 };

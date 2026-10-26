@@ -517,3 +517,25 @@ test('a thread on a passage that gets collapsed is orphaned, and comes back when
   await expect.poll(status, { timeout: 15_000 }).toBe('anchored');
 });
 
+test('a highlight follows a tab switch made with a custom attribute (no size change)', async ({ page }) => {
+  await load(
+    page,
+    `<style>[data-tab="a"] #pb { display: none } [data-tab="b"] #pa { display: none }</style>
+     <main id="tabs" data-tab="a"><p id="pa">Shared tab passage text for both panels here.</p><p id="pb">Shared tab passage text for both panels here.</p></main>`,
+  );
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('pa')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const where = () => page.evaluate(() => ((window as any).__m.get('t').range?.startContainer.parentElement as HTMLElement | undefined)?.id ?? null);
+  await expect.poll(where, { timeout: 10_000 }).toBe('pa');
+  await page.evaluate(() => document.getElementById('tabs')!.setAttribute('data-tab', 'b'));
+  await expect.poll(where, { timeout: 10_000 }).toBe('pb');
+});
+

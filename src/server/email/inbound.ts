@@ -1,9 +1,9 @@
 import { createHmac } from 'node:crypto';
-import { LIMITS } from '../../shared/types';
+import { LIMITS, stripControlChars } from '../../shared/types';
 import { safeEqual, uuidFrom } from '../crypto';
 import { type DB, nowIso } from '../db';
 import type { ReceivedEmail } from './provider';
-import { extractReply } from './reply-parse';
+import { extractReplyChecked } from './reply-parse';
 import { bareAddress, parseReplyAddress, type ReplyTarget } from './reply-token';
 
 // ---------------------------------------------------------------------------
@@ -142,7 +142,20 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
     return { status: 'rejected', reason: 'auto-reply' };
   }
 
-  const body = extractReply(email.text, email.html);
+  const extracted = extractReplyChecked(email.text, email.html);
+  const body = stripControlChars(extracted.text);
+  // Never post part of a reply: too long to read in full is refused, and a
+  // verified sender is told (with the beginning of their text).
+  if (extracted.truncated) {
+    return {
+      status: 'rejected',
+      reason: 'email too long',
+      returnToSender:
+        verdict === 'pass'
+          ? { to: user.email, threadId: target.threadId, reason: 'The email was too long to post (more than 2 MB of text).', text: body.slice(0, 100_000) }
+          : undefined,
+    };
+  }
   if (!body) return { status: 'rejected', reason: 'empty reply' };
 
   // Deterministic ids: a redelivered webhook, or the same message delivered

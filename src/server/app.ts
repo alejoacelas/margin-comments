@@ -2,7 +2,7 @@ import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { LIMITS, PUBLIC_GROUP_ID, type ServerConfig } from '../shared/types';
+import { LIMITS, PUBLIC_GROUP_ID, type ServerConfig, stripControlChars } from '../shared/types';
 import { isValidPageKey, normalizeUrl } from '../shared/url';
 import { type Config, emailMode, googleEnabled } from './config';
 import { safeEqual } from './crypto';
@@ -59,8 +59,10 @@ declare module 'fastify' {
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const body = z
   .string()
-  .transform(s => s.replace(/\r\n?/g, '\n').trim())
+  .transform(s => stripControlChars(s.replace(/\r\n?/g, '\n')).trim())
   .pipe(z.string().min(1, 'empty').max(LIMITS.commentBody));
+/** Free text from the page (quote, title): no control characters. */
+const pageText = (max: number) => z.string().max(max).transform(stripControlChars);
 
 const selector = z.discriminatedUnion('type', [
   z.object({
@@ -84,8 +86,8 @@ const createThreadSchema = z.object({
   groupId: z.string().max(64).optional(),
   pageKeys: z.array(z.string()).min(1).max(2),
   url: z.string().max(LIMITS.url),
-  title: z.string().max(5000).default(''),
-  quote: z.string().min(1).max(LIMITS.quote),
+  title: pageText(5000).default(''),
+  quote: pageText(LIMITS.quote).pipe(z.string().min(1)),
   selectors: z
     .array(selector)
     .min(1)

@@ -535,6 +535,28 @@ describe('notifications and inbound replies (through the API)', () => {
     expect(back?.msg.text).toContain('IMPORTANT TAIL');
   });
 
+  it('an email too long to read in full is refused (never posted in part) and goes back to the sender', async () => {
+    const { b, p } = await setup();
+    t.provider.sent = [];
+    await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'ping' } });
+    await t.queue.tick();
+    const replyTo = t.provider.sent.find(s => s.msg.to === 'alice@example.com')!.msg.replyTo!;
+    t.provider.sent = [];
+    const huge = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'word '.repeat(450_000) + '\nIMPORTANT LAST LINE' });
+    expect((await deliver(huge)).json().status).toBe('rejected');
+    await t.queue.tick();
+    expect(t.provider.sent.some(s => s.msg.to === 'alice@example.com' && /couldn.t be posted/.test(s.msg.subject))).toBe(true);
+  });
+
+  it('control characters never reach stored text, and thread pages stay bounded with them', async () => {
+    const { a, p } = await setup();
+    const nul = '\u0000'.repeat(9000) + 'x';
+    const r = await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(a.token), payload: { id: randomUUID(), body: nul } });
+    expect(r.statusCode).toBeLessThan(300);
+    const thread = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
+    expect(thread.comments.at(-1).body).toBe('x');
+  });
+
   it('unsubscribe links are signed and work with one-click POST', async () => {
     const { b, p } = await setup();
     await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'x' } });

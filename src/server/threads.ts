@@ -154,7 +154,8 @@ export function listThreads(
   if (page.length) {
     const ids = page.map(r => r.id);
     const sums = db
-      .prepare(`SELECT thread_id, SUM(LENGTH(body)) AS n FROM comments WHERE deleted_at IS NULL AND thread_id IN (${ids.map(() => '?').join(',')}) GROUP BY thread_id`)
+      // Bytes, not characters (LENGTH of text stops at a NUL), doubled for JSON escaping.
+      .prepare(`SELECT thread_id, 2 * SUM(LENGTH(CAST(body AS BLOB))) AS n FROM comments WHERE deleted_at IS NULL AND thread_id IN (${ids.map(() => '?').join(',')}) GROUP BY thread_id`)
       .all(...ids) as Array<{ thread_id: string; n: number }>;
     for (const s of sums) commentBytes.set(s.thread_id, s.n);
   }
@@ -162,7 +163,7 @@ export function listThreads(
   let keep = 0;
   while (keep < page.length && (keep === 0 || used < THREAD_PAGE_BYTES)) {
     const r = page[keep];
-    used += r.quote.length + r.selectors.length + (commentBytes.get(r.id) ?? 0) + 1000;
+    used += 2 * (r.quote.length + r.selectors.length) + (commentBytes.get(r.id) ?? 0) + 1000;
     keep++;
   }
   const chosen = page.slice(0, keep);
