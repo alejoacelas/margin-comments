@@ -185,6 +185,35 @@ export async function textCenter(page: Page, text: string, occurrence = 0): Prom
   );
 }
 
+/** Select from the start of `from` to the end of `to` (e.g. across list items). */
+export async function selectBetween(page: Page, from: string, to: string) {
+  await page.evaluate(
+    ({ from, to }) => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let start: { node: Text; offset: number } | null = null;
+      let end: { node: Text; offset: number } | null = null;
+      for (let n = walker.nextNode() as Text | null; n; n = walker.nextNode() as Text | null) {
+        if (!start) {
+          const i = n.data.indexOf(from);
+          if (i >= 0) start = { node: n, offset: i };
+        }
+        if (start) {
+          const j = n.data.indexOf(to);
+          if (j >= 0) {
+            end = { node: n, offset: j + to.length };
+            break;
+          }
+        }
+      }
+      if (!start || !end) throw new Error('not found');
+      (start.node.parentElement as Element).scrollIntoView({ block: 'center' });
+      document.getSelection()!.setBaseAndExtent(start.node, start.offset, end.node, end.offset);
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }));
+    },
+    { from, to },
+  );
+}
+
 /** Select text and start a thread with `body`. */
 export async function createThread(page: Page, text: string, body: string, occurrence = 0) {
   await selectText(page, text, occurrence);

@@ -7,9 +7,20 @@ table { border-collapse: collapse; } td, th { padding: 4px 8px; }
 const app = document.getElementById('app');
 let n = 0;
 setInterval(() => { document.getElementById('clock').textContent = String(++n); }, 250);
+const SENTENCES = [
+  'a review of a novel about lighthouse keepers and their logbooks',
+  'notes from a conference on the history of printing presses',
+  'an interview with a translator of medieval Persian poetry',
+  'a long thread about keeping a commonplace book in college',
+  'photos from a trip to a library built inside a cathedral',
+  'an essay arguing that footnotes are an underrated art form',
+  'a recipe that has been annotated by three generations',
+  'a field guide to the birds that nest near old bookshops',
+  'a short story told entirely through marginal notes',
+];
 function chunk(i) {
   const p = document.createElement('p');
-  p.textContent = 'Infinite chunk ' + i + ': this paragraph arrived later, as if loaded by scrolling down the feed of essays.';
+  p.textContent = 'Infinite chunk ' + i + ': ' + SENTENCES[(i - 1) % SENTENCES.length] + ', loaded as you scroll.';
   return p;
 }
 setTimeout(() => {
