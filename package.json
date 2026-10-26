@@ -1,0 +1,40 @@
+{
+  "name": "margin-comments",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Google Docs-style comment threads on any web page (Chrome extension + backend).",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "build": "npm run build:ext && npm run build:server",
+    "build:ext": "node scripts/build-extension.mjs",
+    "build:server": "node scripts/build-server.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run typecheck && npm run test:unit && npm run test:e2e",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:anchoring": "playwright test --project=anchoring",
+    "dev:server": "node scripts/build-server.mjs && node --env-file-if-exists=.env.local build/server/index.js"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "11.2.1",
+    "@fastify/websocket": "11.3.4",
+    "approx-string-match": "2.0.1",
+    "email-reply-parser": "2.3.9",
+    "fastify": "5.12.7",
+    "html-to-text": "10.0.1",
+    "preact": "10.29.8",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0",
+    "@types/html-to-text": "9.0.4",
+    "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

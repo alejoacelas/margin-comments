@@ -1,0 +1,9 @@
+{
+  "slug": "wikipedia-population-table",
+  "category": "data-tables",
+  "sourceUrl": "https://en.wikipedia.org/w/index.php?title=List_of_countries_and_dependencies_by_population&oldid=1373063567",
+  "fetchedAt": "2026-10-26T15:11:29.181Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_population",
+  "notes": "Big sortable data table (~240 rows) on English Wikipedia. original = revision 1373063567 (2026-09-03, 40 revisions before current); edited = current (revision 1381775320, 2026-10-24). Edits are mostly numeric updates to individual table cells (populations, dates, footnotes), plus small prose changes."
+}
