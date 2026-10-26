@@ -103,18 +103,20 @@ Reliability was the main goal. Highlights:
   never breaks an anchor. Fuzzy matches must pass a threshold, so a thread is shown as orphaned
   rather than on the wrong sentence. Threads re-anchor on DOM changes (throttled), on late
   renders, infinite scroll and SPA navigation. On an 18-page corpus of real pages and edited
-  versions, same-page anchoring is 743/743 and text that survives an edit is re-found 476/476
+  versions, same-page anchoring is 743/743 and text that survives an edit is re-found 478/478
   (`tests/anchoring/corpus/README.md`).
 - **No page breakage**: highlights use the CSS Custom Highlight API (no elements are inserted
-  into the page), all UI lives in a Shadow DOM in the browser's top layer, keyboard and mouse
-  events from the UI never reach page handlers, and strict-CSP pages work.
+  into the page), all UI lives in a closed Shadow DOM in the browser's top layer, keyboard and
+  mouse events from the UI never reach page handlers, and strict-CSP pages work.
+- **Pages can't read you**: page scripts can't see into the UI, and everything you type goes
+  into extension-origin frames, so a page can't read your drafts or log your keystrokes.
 - **Nothing you type is lost**: drafts are saved as you type and survive closing the tab;
   changes go to a persistent outbox in the extension and are retried until the server accepts
   them (offline, server down, service worker restarted); anything that can't be saved stays
   visible with *Copy text*.
-- **Tests**: 30 end-to-end Playwright tests with the real extension (two users, live sync,
+- **Tests**: 43 end-to-end Playwright tests with the real extension (two users, live sync,
   email notify and reply through a fake Resend, offline, service worker restart, SPAs, CSP,
-  hostile pages, account switching), 67 server/unit tests, the anchoring corpus plus anchoring
+  hostile pages, account switching, the closed production build), 75 server/unit tests, the anchoring corpus plus anchoring
   regression and large-page performance tests, and a production smoke test on real sites
   (Wikipedia, GitHub, Hacker News, MDN). Every adversarial review round is logged in
   [`REVIEW.md`](REVIEW.md).
