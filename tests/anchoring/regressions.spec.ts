@@ -375,3 +375,40 @@ test("a thread's stored context never includes an adjacent inline script's data"
   }
 });
 
+test('hidden text is never quoted, inside or next to a selection; it anchors again once shown', async ({ page }) => {
+  await load(
+    page,
+    `<main><p id="p">Visible beginning <span hidden>private patient diagnosis</span> visible ending.</p><div id="h" style="display:none">secret sibling text here</div><details id="d"><summary>More</summary><p id="in">Text inside a collapsed section of the page.</p></details></main>`,
+  );
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('p')!);
+    const desc = mc.describeRange(document.body, r);
+    const anchored = mc.anchorSelectors(document.body, desc.selectors);
+    return { json: JSON.stringify(desc.selectors), quote: desc.quote, anchored: !!anchored };
+  });
+  expect(res.json).not.toContain('diagnosis');
+  expect(res.json).not.toContain('secret sibling');
+  expect(res.quote).toBe('Visible beginning visible ending.');
+  expect(res.anchored).toBe(true);
+  // A thread on text in a <details> that gets collapsed is an orphan while
+  // collapsed and comes back when it's opened (the manager retries on layout changes).
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const d = document.getElementById('d') as HTMLDetailsElement;
+    d.open = true;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('in')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    d.open = false;
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  await expect.poll(() => page.evaluate(() => (window as any).__m.get('t').status), { timeout: 15_000 }).toBe('orphan');
+  await page.evaluate(() => ((document.getElementById('d') as HTMLDetailsElement).open = true));
+  await expect.poll(() => page.evaluate(() => (window as any).__m.get('t').status), { timeout: 15_000 }).toBe('anchored');
+});
+

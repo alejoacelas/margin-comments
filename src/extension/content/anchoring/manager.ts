@@ -260,8 +260,10 @@ export class AnchorManager {
       }
       if (e.state.status === 'orphan') {
         // Retry when the backoff elapsed, or sooner if the page text changed
-        // (but not more often than every few seconds on busy pages).
-        const grew = (textChanged || e.failedAtLength < 0) && now - e.lastTry >= Math.min(5000, 500 * e.tries);
+        // or something was shown/hidden (hidden text isn't matched, so a
+        // collapsed section opening can bring the text back), but not more
+        // often than every few seconds on busy pages.
+        const grew = (textChanged || layoutChanged || e.failedAtLength < 0) && now - e.lastTry >= Math.min(5000, 500 * e.tries);
         if (now < e.nextTry && !grew) continue;
       }
       e.lastTry = now;

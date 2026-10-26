@@ -128,8 +128,9 @@ function anchorAll(list: Array<{ selectors: Selector[] }>, opts: { quoteOnly?: b
     const ms = performance.now() - t0;
     if (!r) return { anchored: false, ms };
     const raw = rawOffset(r.range, index);
-    // Visible text (inline <style>/<script> excluded, as in quotes).
-    const text = renderedTextFromRange(r.range);
+    // Rendered text as quotes have it (script/style and hidden text excluded).
+    const span = index.trimmedRawSpan(r.range);
+    const text = span ? index.renderedSlice(span[0], span[1]) : renderedTextFromRange(r.range);
     const sStart = index.fromRaw(raw);
     return { anchored: true, method: r.method, quoteScore: r.quoteScore, text, rawStart: raw, sStart, sEnd: sStart + stripWs(text).length, ms };
   });

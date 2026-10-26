@@ -21,7 +21,6 @@ import approxSearch from 'approx-string-match';
 import type { Selector, TextPositionSelector, TextQuoteSelector, RangeSelector } from '../../../shared/types';
 import { describe as hypothesisDescribe } from './hypothesis/html';
 import { matchQuoteCandidates } from './hypothesis/match-quote';
-import { renderedTextFromRange } from './hypothesis/rendered-text';
 import { TextRange } from './hypothesis/text-range';
 import { RangeAnchor, TextPositionAnchor } from './hypothesis/types';
 
@@ -74,8 +73,24 @@ export class TextIndex {
     let offsets = new Int32Array(4096);
     let n = 0;
     let raw = 0;
-    const add = (node: Text, skipped: boolean) => {
+    // Text that isn't rendered (hidden, display:none, visibility:hidden) is
+    // treated like script text: counted in raw offsets, but never matched,
+    // quoted or used as context (selectors are stored and shown to everyone).
+    const shownCache = new Map<Element, boolean>();
+    const rendered = (node: Text): boolean => {
+      const root = node.getRootNode();
+      const el = node.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+      if (!el || typeof el.checkVisibility !== 'function') return true;
+      let shown = shownCache.get(el);
+      if (shown === undefined) {
+        shown = el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: false } as CheckVisibilityOptions);
+        shownCache.set(el, shown);
+      }
+      return shown;
+    };
+    const add = (node: Text, skippedTag: boolean) => {
       const data = node.data;
+      const skipped = skippedTag || (data.trim() !== '' && !rendered(node));
       this.nodes.push(node);
       this.starts.push(raw);
       this.skipped.push(skipped);
@@ -439,8 +454,15 @@ export function anchorSelectors(
   if (!quote || !stripWs(quote.exact)) return null;
   const exactStripped = stripWs(quote.exact);
   // Same text representation as the quote (scripts/styles excluded).
-  const verifies = (r: Range) => !r.collapsed && stripWs(renderedTextFromRange(r)) === exactStripped;
   const index = options.index && options.index.root === root ? options.index : new TextIndex(root);
+  // The range's rendered text (as the index sees it: no script, style or
+  // hidden text) must be the quote; a range with none (e.g. a copy the page
+  // has hidden) doesn't verify.
+  const verifies = (r: Range) => {
+    if (r.collapsed) return false;
+    const span = index.trimmedRawSpan(r);
+    return !!span && stripWs(index.renderedSlice(span[0], span[1])) === exactStripped;
+  };
 
   // The saved range/position are only trusted when the quote is unique on
   // the page: with repeats, content inserted above can shift them onto a

@@ -316,3 +316,11 @@ Found while auditing the rest of the email path for the same class of bug (not r
 reviewers): the final cleanup `/[ \t]+$/gm` took 38 s on 100,000 spaces followed by a letter.
 Trailing whitespace is now trimmed with a loop; the linear-time test covers it.
 
+## Round 24 — full repository (2026-10-26)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **Hidden page text (`hidden`, `display:none`, `visibility:hidden`) inside or next to a selection was stored in the quote and context, which every user of the page receives** | Fixed | The text index treats non-rendered text like script text: counted in offsets, never matched, quoted or used as context; a saved range with no rendered text doesn't verify; orphans are retried when something is shown or hidden. Corpus unchanged (the harness now measures rendered text the same way). Anchoring regression "hidden text is never quoted, inside or next to a selection; it anchors again once shown" |
+

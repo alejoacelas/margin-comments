@@ -25,8 +25,12 @@ Choices made while building this without supervision, with the reasoning.
   text our matching uses (script/style excluded): selectors are stored and shown to everyone,
   and Hypothesis's own context could include an adjacent inline `<script>`'s data.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
-  `<script>/<style>/<noscript>/<template>`, so re-indentation, minification and `<br>`/block
-  changes never break an anchor.
+  `<script>/<style>/<noscript>/<template>` and text that isn't rendered (`hidden`,
+  `display:none`, `visibility:hidden`), so re-indentation, minification and `<br>`/block
+  changes never break an anchor, and hidden text never ends up in a stored (shared) quote or
+  context. Hidden text still counts in offsets. A thread on text the page later hides (a
+  collapsed section) is listed as orphaned until it's shown again; show/hide changes trigger a
+  retry.
 - **Web components:** the text index walks the page as rendered: open shadow roots in place of
   their host's children, slots showing what's assigned to them (closed roots can't be read, by
   design). Selections inside a component come from `getComposedRanges`, their selectors are
