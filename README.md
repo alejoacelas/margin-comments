@@ -10,7 +10,8 @@ who visits the same page, and replies arrive (and can be answered) by email.
    [latest release](https://github.com/alejoacelas/margin-comments/releases/latest) and unzip it.
 2. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the
    unzipped folder.
-3. On any web page, click the Margin Comments toolbar icon and sign in with your email. Until real
+3. On any web page, click the Margin Comments toolbar icon (pin it from Chrome's puzzle-piece menu)
+   and sign in with your email. Until real
    email is turned on (below), your 6-digit code is at
    <https://margin-comments.fly.dev/admin/outbox> (user `admin`, password in 1Password:
    `ADMIN_TOKEN — margin-comments`, vault `mac-agents`).
@@ -111,9 +112,12 @@ Reliability was the main goal. Highlights:
   changes go to a persistent outbox in the extension and are retried until the server accepts
   them (offline, server down, service worker restarted); anything that can't be saved stays
   visible with *Copy text*.
-- **Tests**: 24 end-to-end Playwright tests with the real extension (two users, live sync,
+- **Tests**: 30 end-to-end Playwright tests with the real extension (two users, live sync,
   email notify and reply through a fake Resend, offline, service worker restart, SPAs, CSP,
-  shortcut isolation), 50+ server/unit tests, and the anchoring corpus. See `AGENTS.md`.
+  hostile pages, account switching), 67 server/unit tests, the anchoring corpus plus anchoring
+  regression and large-page performance tests, and a production smoke test on real sites
+  (Wikipedia, GitHub, Hacker News, MDN). Every adversarial review round is logged in
+  [`REVIEW.md`](REVIEW.md).
 
 ## Development
 
