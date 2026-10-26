@@ -28,9 +28,11 @@ Choices made while building this without supervision, with the reasoning.
   `<script>/<style>/<noscript>/<template>/<textarea>` (a textarea's children are its initial
   value, not what it shows) and text that isn't rendered (`hidden`, `display:none`,
   `visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text
-  renders in, i.e. its slot when slotted, looking through `display:contents`; text that is
-  rendered but transparent, off-screen or visually hidden for screen readers still counts as
-  page text: excluding it would make anchors flicker during fade-ins), so re-indentation, minification and `<br>`/block
+  renders in, i.e. its slot when slotted, looking through `display:contents`). The line is the
+  browser's own notion of "rendered", as `innerText` uses it: text that is rendered but
+  concealed (transparent, clipped, off-screen, visually hidden for screen readers, same color as
+  the background) still counts as page text; excluding it would make anchors flicker during
+  fade-ins and differ from what the browser itself reports as the page's text, so re-indentation, minification and `<br>`/block
   changes never break an anchor, and hidden text never ends up in a stored (shared) quote or
   context. Hidden text still counts in offsets. A thread on text the page later hides (a
   collapsed section) is listed as orphaned until it's shown again; show/hide changes trigger a
