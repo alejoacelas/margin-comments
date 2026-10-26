@@ -167,3 +167,67 @@ test('production: comment on real sites without breaking them', async () => {
     await rm(a.dir, { recursive: true, force: true });
   }
 });
+
+test('production: the shipped dist/ (closed shadow root) comments on Wikipedia with real input', async () => {
+  test.skip(!process.env.ADMIN_TOKEN, 'ADMIN_TOKEN not set');
+  test.setTimeout(120_000);
+  const shipped = resolve('dist');
+  const dir = await mkdtemp(join(tmpdir(), 'mc-smoke-dist-'));
+  const context = await chromium.launchPersistentContext(dir, {
+    channel: 'chromium',
+    headless: true,
+    args: [`--disable-extensions-except=${shipped}`, `--load-extension=${shipped}`],
+  });
+  try {
+    let sw = context.serviceWorkers()[0];
+    if (!sw) sw = await context.waitForEvent('serviceworker');
+    // Sign in through the API and hand the session to the extension.
+    const email = `smoke-dist-${Date.now()}@example.com`;
+    const start = await (await fetch(`${API}/api/auth/email/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email }) })).json();
+    const code = await codeFor(email);
+    const session = await (await fetch(`${API}/api/auth/email/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestId: start.requestId, code }) })).json();
+    await sw.evaluate(s => chrome.storage.local.set({ session: s }), { token: session.token, user: session.user });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    const target = (await cdp.send('Target.getTargets')).targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/background.js'));
+    if (target) await cdp.send('Target.closeTarget', { targetId: target.targetId });
+
+    await page.goto('https://en.wikipedia.org/wiki/Marginalia', { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('margin-comments-root')).toHaveCount(1, { timeout: 15_000 });
+    expect(await page.evaluate(() => document.querySelector('margin-comments-root')!.shadowRoot)).toBeNull();
+    const chip = await page.evaluate(() => {
+      const p = [...document.querySelectorAll('#mw-content-text p')].find(x => (x.textContent ?? '').trim().length > 80)!;
+      p.scrollIntoView({ block: 'center' });
+      const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      const t = w.nextNode() as Text;
+      const sel = document.getSelection()!;
+      sel.setBaseAndExtent(t, 0, t, Math.min(30, t.data.length));
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      const r = sel.getRangeAt(0).getBoundingClientRect();
+      return { x: r.right + 10 + 25, y: Math.max(4, r.top) + 10 };
+    });
+    await page.waitForTimeout(600);
+    await page.mouse.click(chip.x, chip.y);
+    await page.waitForTimeout(500);
+    const body = `Shipped build smoke ${Date.now()}`;
+    await page.keyboard.type(body);
+    await page.keyboard.press('Enter');
+    let commentId = '';
+    await expect
+      .poll(
+        async () => {
+          const j = await (await fetch(`${API}/api/threads?key=${encodeURIComponent('en.wikipedia.org/wiki/Marginalia')}`, { headers: { authorization: `Bearer ${session.token}` } })).json();
+          const t = j.threads?.find((x: any) => x.comments[0]?.body === body);
+          commentId = t?.comments[0]?.id ?? '';
+          return !!t;
+        },
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+    // Clean up.
+    await fetch(`${API}/api/comments/${commentId}`, { method: 'DELETE', headers: { authorization: `Bearer ${session.token}` } });
+  } finally {
+    await context.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
