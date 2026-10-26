@@ -105,6 +105,8 @@ const REAL_SITES = [
   'https://github.com/hypothesis/client',
   'https://news.ycombinator.com/news',
   'https://developer.mozilla.org/en-US/docs/Web/API/Range',
+  // Plain HTTP: an insecure context (no crypto.randomUUID, no clipboard API).
+  'http://info.cern.ch/hypertext/WWW/TheProject.html',
 ];
 
 test('production: comment on real sites without breaking them', async () => {
