@@ -348,3 +348,14 @@ Reviewer B found nothing material.
 
 Anchoring regression "hidden display:contents text and closed <details> bodies stay out of selectors" (also checks a visible override and an open `<details>`). All verified to fail on the previous code; corpus unchanged.
 
+## Round 27 — full repository (2026-10-26)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Text inside an element with `content-visibility:hidden` (its box shows, its contents don't) could enter stored context | Fixed | Such contents count as hidden, also through `display:contents`. Added to the hidden-text anchoring regression |
+| B1 | A Resend response whose body failed mid-read escaped as a non-retryable error, and the webhook acknowledged it: the reply was lost without redelivery | Fixed | Body reads are inside the retryable network wrapper; the webhook acknowledges only `PermanentEmailError` and answers 503 otherwise. `email.test.ts` (body failing mid-stream; unexpected vs permanent fetch errors) |
+| C1 | Unsent drafts older than 60 days were deleted on the next save | Fixed | No age limit; only the newest 2000 are kept (storage safety). e2e "unsent drafts never expire" |
+| C2 | Drafts were compared with whitespace collapsed, so drafts differing only in indentation or line breaks were merged, and Continue could overwrite one | Fixed | Exact-text comparison (line endings and ends normalized). e2e "drafts that differ only in whitespace are different drafts" |
+
+All verified to fail on the previous code.
+

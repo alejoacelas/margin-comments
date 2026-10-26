@@ -82,7 +82,13 @@ export class ResendProvider implements EmailProvider {
     } catch (err) {
       throw new RetryableEmailError(`network: ${(err as Error).message}`);
     }
-    const text = await res.text();
+    let text: string;
+    try {
+      text = await res.text();
+    } catch (err) {
+      // The connection dropped (or timed out) after the headers: try again.
+      throw new RetryableEmailError(`network (body): ${(err as Error).message}`);
+    }
     let json: any = null;
     try {
       json = text ? JSON.parse(text) : null;

@@ -313,6 +313,11 @@ function StrandedRow({ op, actions }: { op: Op; actions: Actions }) {
   );
 }
 
+/** Draft text for comparisons: line endings and ends normalized, inner whitespace kept (it's meaningful). */
+function sameDraftText(s: string): string {
+  return s.replace(/\r\n?/g, '\n').trim();
+}
+
 function Sidebar({ state, actions }: { state: State; actions: Actions }) {
   const threads = viewThreads(state);
   const open = threads.filter(t => !t.resolved);
@@ -331,7 +336,7 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
   const dedupe = (list: Draft[]) => {
     const seen = new Set<string>();
     return list.filter(d => {
-      const id = `${d.key}\u0000${d.text.replace(/\s+/g, ' ').trim()}`;
+      const id = `${d.key}\u0000${sameDraftText(d.text)}`;
       if (seen.has(id)) return false;
       seen.add(id);
       return true;
@@ -366,9 +371,9 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
     if (!key.startsWith('reply:') && !key.startsWith('edit:')) continue;
     const live = key.startsWith('reply:') ? visibleIds.has(key.slice(6)) : commentIds.has(key.slice(5));
     if (!live) continue;
-    const shown = (actions.draftText(key) ?? '').replace(/\s+/g, ' ').trim();
+    const shown = sameDraftText(actions.draftText(key) ?? '');
     for (const d of dedupe(state.drafts.filter(x => x.key === key))) {
-      if (d.text.trim() && d.text.replace(/\s+/g, ' ').trim() !== shown) extraDrafts.push(d);
+      if (d.text.trim() && sameDraftText(d.text) !== shown) extraDrafts.push(d);
     }
   }
 

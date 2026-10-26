@@ -8,7 +8,7 @@ import { type Config, emailMode, googleEnabled } from './config';
 import { safeEqual } from './crypto';
 import { type DB, openDb, tx } from './db';
 import { processInbound, verifySvix } from './email/inbound';
-import { type EmailProvider, OutboxProvider, ResendProvider, RetryableEmailError } from './email/provider';
+import { type EmailProvider, OutboxProvider, PermanentEmailError, ResendProvider } from './email/provider';
 import { EmailQueue } from './email/queue';
 import { consumeState, exchangeCode, googleIsAuthoritative, isAllowedExtensionRedirect, startGoogle } from './google';
 import { LiveHub } from './live';
@@ -524,9 +524,10 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
       email = await provider.getReceived(emailId);
     } catch (err) {
       req.log.warn({ err: (err as Error).message }, 'could not fetch inbound email');
-      // 5xx makes Resend redeliver later; a permanent error is acknowledged.
-      if (err instanceof RetryableEmailError) return reply.code(503).send({ error: 'fetch_failed' });
-      return { ignored: true, reason: 'fetch_failed' };
+      // Only a definite failure (e.g. the email doesn't exist) is
+      // acknowledged; anything else gets a 5xx so Resend redelivers later.
+      if (err instanceof PermanentEmailError) return { ignored: true, reason: 'fetch_failed' };
+      return reply.code(503).send({ error: 'fetch_failed' });
     }
     const outcome = processInbound(
       {

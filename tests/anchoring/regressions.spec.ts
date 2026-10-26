@@ -445,6 +445,8 @@ test('hidden display:contents text and closed <details> bodies stay out of selec
     '<span style="display:contents;visibility:hidden">private diagnosis 1234</span>',
     '<details><summary>More</summary>private diagnosis 1234</details>',
     '<details><summary>More</summary><span style="display:contents">private diagnosis 1234</span></details>',
+    '<div style="content-visibility:hidden">private diagnosis 1234</div>',
+    '<div style="content-visibility:hidden"><span style="display:contents">private diagnosis 1234</span></div>',
   ]) {
     await load(page, `<main><p id="p">Public article text.</p>${after}</main>`);
     const json = await page.evaluate(() => {

@@ -218,3 +218,35 @@ test('"Copy text" copies from the extension frame, also on plain-HTTP pages', as
   expect(await reader.evaluate(() => navigator.clipboard.readText())).toBe('Draft to copy out');
 });
 
+test('unsent drafts never expire', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  // A draft written three months ago, then the worker restarts (loads it from storage).
+  await alice.sw.evaluate(async () => {
+    const userId = ((await chrome.storage.local.get('session')).session as { user: { id: string } }).user.id;
+    const { drafts = {} } = (await chrome.storage.local.get('drafts')) as { drafts?: Record<string, unknown> };
+    drafts[`${userId}|reply:old-thread|old-tab`] = { key: 'reply:old-thread', text: 'Written long ago', userId, instanceId: 'old-tab', updatedAt: Date.now() - 90 * 86400_000, pageKeys: ['example.com/old'] };
+    await chrome.storage.local.set({ drafts });
+  });
+  await alice.sw.evaluate(() => ((globalThis as any).__marker = 1));
+  const cdp = await alice.context.newCDPSession(a);
+  const { targetInfos } = await cdp.send('Target.getTargets');
+  await cdp.send('Target.closeTarget', { targetId: targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/background.js'))!.targetId });
+  await expect
+    .poll(async () => {
+      const w = alice.context.serviceWorkers().find(x => x.url().endsWith('/background.js'));
+      return w ? await w.evaluate(() => (globalThis as any).__marker ?? 'fresh').catch(() => 'gone') : 'none';
+    })
+    .toBe('fresh');
+  // Typing a new draft saves (and used to prune old drafts).
+  await selectText(a, 'Threads with email replies');
+  await a.locator('[data-testid=adder]').click();
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('A new draft');
+  const texts = () =>
+    alice.context.serviceWorkers().find(x => x.url().endsWith('/background.js'))!.evaluate(async () =>
+      Object.values(((await chrome.storage.local.get('drafts')).drafts ?? {}) as Record<string, { text: string }>).map(d => d.text).sort(),
+    );
+  await expect.poll(texts).toEqual(['A new draft', 'Written long ago']);
+});
+

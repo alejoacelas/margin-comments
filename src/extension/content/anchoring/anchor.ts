@@ -50,7 +50,7 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA'
 export function nodeShown(node: Node, cache?: Map<Element, boolean>): boolean {
   const el = renderingParent(node);
   if (!el) return true;
-  if (closedDetailsHides(el, node)) return false;
+  if (closedDetailsHides(el, node) || contentHidden(el)) return false;
   if (getComputedStyle(el).visibility !== 'visible') return false;
   return rendered(el, cache);
 }
@@ -62,12 +62,17 @@ function rendered(el: Element, cache?: Map<Element, boolean>): boolean {
   if (typeof el.checkVisibility !== 'function') shown = true;
   else if (getComputedStyle(el).display === 'contents') {
     const parent = renderingParent(el);
-    shown = !parent || (!closedDetailsHides(parent, el) && rendered(parent, cache));
+    shown = !parent || (!closedDetailsHides(parent, el) && !contentHidden(parent) && rendered(parent, cache));
   } else {
     shown = el.checkVisibility({ contentVisibilityAuto: false } as CheckVisibilityOptions);
   }
   cache?.set(el, shown);
   return shown;
+}
+
+/** `content-visibility: hidden`: the element's box shows, its contents don't. */
+function contentHidden(el: Element): boolean {
+  return (getComputedStyle(el) as CSSStyleDeclaration & { contentVisibility?: string }).contentVisibility === 'hidden';
 }
 
 /** A closed <details> renders only its (first) <summary>. */

@@ -776,3 +776,42 @@ test("continuing another tab's draft keeps this tab's own draft for the same sel
   await expect(a.locator('[data-testid=draft-row]').filter({ hasText: 'Draft typed in tab B, revised in A' })).toHaveCount(1);
 });
 
+test('drafts that differ only in whitespace are different drafts', async ({ alice }) => {
+  const path = uniquePath('article');
+  const make = async (text: string) => {
+    const p = await alice.open(path);
+    await selectText(p, 'Social highlights for friends');
+    await p.locator('[data-testid=adder]').click();
+    const input = p.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+    await expect(input).toBeFocused();
+    await p.waitForTimeout(200);
+    await input.fill(text);
+    await expect(input).toHaveValue(text);
+    await p.waitForTimeout(700);
+    return p;
+  };
+  const first = await alice.open(path);
+  await alice.signIn(first);
+  await first.close();
+  const indented = 'if ready:\n    log()';
+  const flat = 'if ready:\nlog()';
+  const b = await make(indented);
+  await b.close();
+  const a = await make(flat);
+  await alice.openSidebar(a);
+  // B's (indented) draft is listed on its own, not merged with A's.
+  const rows = a.locator('[data-testid=draft-row]');
+  await expect.poll(async () => (await rows.allTextContents()).some(t => t.includes(indented))).toBe(true);
+  const at = (await rows.allTextContents()).findIndex(t => t.includes(indented));
+  await rows.nth(at).getByRole('button', { name: 'Continue' }).click();
+  const input = a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+  await expect(input).toHaveValue(indented);
+  await input.press('End');
+  await input.pressSequentially('  # checked');
+  await a.waitForTimeout(800);
+  const texts = await alice.sw.evaluate(async () =>
+    Object.values(((await chrome.storage.local.get('drafts')).drafts ?? {}) as Record<string, { text: string }>).map(d => d.text).sort(),
+  );
+  expect(texts).toEqual([flat, indented, `${indented}  # checked`].sort());
+});
+

@@ -103,8 +103,14 @@ function draftSlot(key: string, instanceId: string, userId = session?.user.id): 
   return userId ? `${userId}|${key}|${instanceId}` : null;
 }
 
+/**
+ * A draft's text for comparisons: only line endings and the ends are
+ * normalized (as the server does with a comment). Inner whitespace is
+ * meaningful (indented code, paragraphs), so drafts differing only there are
+ * different drafts.
+ */
 function normalizedText(s: string): string {
-  return s.replace(/\s+/g, ' ').trim();
+  return s.replace(/\r\n?/g, '\n').trim();
 }
 
 /**
@@ -603,10 +609,14 @@ function handleRpc<M extends RpcMethod>(method: M, params: RpcMethods[M]['params
   return h(params, info);
 }
 
+/**
+ * Drafts are kept until sent or discarded, however old. Only a runaway
+ * number is capped (the newest 2000 stay), to stay well inside extension
+ * storage limits; a failed save would lose more.
+ */
 function pruneDrafts() {
   const entries = Object.entries(drafts).sort((a, b) => b[1].updatedAt - a[1].updatedAt);
-  const cutoff = Date.now() - 60 * 86400_000;
-  drafts = Object.fromEntries(entries.filter(([, d], i) => i < 300 && d.updatedAt > cutoff && d.userId));
+  drafts = Object.fromEntries(entries.filter(([, d], i) => i < 2000 && d.userId));
 }
 
 async function refreshConfig() {

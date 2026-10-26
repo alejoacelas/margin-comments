@@ -27,7 +27,7 @@ Choices made while building this without supervision, with the reasoning.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
   `<script>/<style>/<noscript>/<template>/<textarea>` (a textarea's children are its initial
   value, not what it shows) and text that isn't rendered (`hidden`, `display:none`,
-  `visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text
+  `visibility:hidden`, `content-visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text
   renders in, i.e. its slot when slotted, looking through `display:contents`). The line is the
   browser's own notion of "rendered", as `innerText` uses it: text that is rendered but
   concealed (transparent, clipped, off-screen, visually hidden for screen readers, same color as
@@ -214,7 +214,9 @@ Choices made while building this without supervision, with the reasoning.
   tabs never overwrite each other; an editor restores its own tab's draft, else the newest one,
   and the others are listed under "Unsent drafts". "Continue" on another draft first sets this
   tab's own different draft for that key aside (a slot no tab owns), so editing never
-  overwrites it. Cancel/Discard delete by the text the user was
+  overwrites it. Drafts never expire (only a runaway count is capped at the newest 2000), and
+  drafts are compared by exact text (line endings and ends normalized): inner whitespace
+  such as indentation is meaningful. Cancel/Discard delete by the text the user was
   looking at, never a different text, and never the draft of another tab that is still open. A
   change is only ever queued under the account it was typed in.
 - **Worker lifecycle:** a 20 s ping keeps the worker alive while pages are open; content scripts

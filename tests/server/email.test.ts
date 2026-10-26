@@ -237,6 +237,22 @@ describe('extractReply', () => {
   });
 });
 
+describe('ResendProvider failures', () => {
+  it('a response whose body fails mid-read is retryable', async () => {
+    const fake = (async () =>
+      new Response(
+        new ReadableStream({
+          start(c) {
+            c.error(new TypeError('terminated'));
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const p = new ResendProvider('re_key', 'https://api.resend.test', fake);
+    await expect(p.getReceived!('email-1')).rejects.toBeInstanceOf(RetryableEmailError);
+  });
+});
+
 describe('ResendProvider wire format', () => {
   it('sends snake_case JSON with auth, user agent and idempotency key', async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
@@ -474,7 +490,14 @@ describe('notifications and inbound replies (through the API)', () => {
     const later = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'after a hiccup' });
     t.provider.fetchFailures.push(new RetryableEmailError('503'));
     expect((await deliver(later)).statusCode).toBe(503);
+    // An unexpected error (not known to be permanent) also asks for redelivery.
+    t.provider.fetchFailures.push(new TypeError('terminated'));
+    expect((await deliver(later)).statusCode).toBe(503);
     expect((await deliver(later)).json().status).toBe('posted');
+    // A permanent failure is acknowledged (redelivery couldn't help).
+    const gone = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'never fetched' });
+    t.provider.fetchFailures.push(new PermanentEmailError('404 not_found'));
+    expect((await deliver(gone)).json()).toMatchObject({ ignored: true });
 
     const final = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
     expect(final.comments.map((c: { body: string }) => c.body)).toEqual(['First!', 'ping', 'pong', 'gray but signed', 'once', 'replayed?', 'after a hiccup']);
