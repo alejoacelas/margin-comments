@@ -35,7 +35,6 @@ export type AnchorResult = {
 };
 
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
-const WS = /\s/;
 
 export function stripWs(s: string): string {
   return s.replace(/\s+/g, '');
@@ -58,34 +57,28 @@ export class TextIndex {
 
   constructor(root: Element) {
     this.root = root;
-    const chars: string[] = [];
-    let offsets = new Int32Array(1024);
+    const parts: string[] = [];
+    let offsets = new Int32Array(4096);
     let n = 0;
     let raw = 0;
-    const push = (c: string, r: number) => {
-      if (n === offsets.length) {
-        const bigger = new Int32Array(offsets.length * 2);
-        bigger.set(offsets);
-        offsets = bigger;
-      }
-      chars.push(c);
-      offsets[n++] = r;
-    };
-
+    const skipCache = new Map<Element, boolean>();
     const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode() as Text | null;
-    while (node) {
+    for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
       const data = node.data;
-      if (!isSkipped(node, root)) {
-        for (let i = 0; i < data.length; i++) {
-          const c = data[i];
-          if (!WS.test(c)) push(c, raw + i);
+      if (!isSkipped(node, root, skipCache)) {
+        if (n + data.length > offsets.length) {
+          const bigger = new Int32Array(Math.max(offsets.length * 2, n + data.length));
+          bigger.set(offsets);
+          offsets = bigger;
         }
+        for (let i = 0; i < data.length; i++) {
+          if (!isWsCode(data.charCodeAt(i))) offsets[n++] = raw + i;
+        }
+        parts.push(data.replace(/\s+/g, ''));
       }
       raw += data.length;
-      node = walker.nextNode() as Text | null;
     }
-    this.text = chars.join('');
+    this.text = parts.join('');
     this.rawOffsets = offsets.subarray(0, n);
     this.rawLength = raw;
   }
@@ -108,13 +101,39 @@ export class TextIndex {
   }
 }
 
-function isSkipped(node: Node, root: Element): boolean {
-  let el = node.parentElement;
+/** Same set as the regex `\s` (so `text` and `rawOffsets` stay aligned). */
+function isWsCode(c: number): boolean {
+  return (
+    (c >= 9 && c <= 13) ||
+    c === 32 ||
+    c === 160 ||
+    c === 5760 ||
+    (c >= 8192 && c <= 8202) ||
+    c === 8232 ||
+    c === 8233 ||
+    c === 8239 ||
+    c === 8287 ||
+    c === 12288 ||
+    c === 65279
+  );
+}
+
+function isSkipped(node: Node, root: Element, cache: Map<Element, boolean>): boolean {
+  const parent = node.parentElement;
+  if (!parent || parent === root) return false;
+  const cached = cache.get(parent);
+  if (cached !== undefined) return cached;
+  let el: Element | null = parent;
+  let skipped = false;
   while (el && el !== root) {
-    if (SKIP_TAGS.has(el.tagName)) return true;
+    if (SKIP_TAGS.has(el.tagName)) {
+      skipped = true;
+      break;
+    }
     el = el.parentElement;
   }
-  return false;
+  cache.set(parent, skipped);
+  return skipped;
 }
 
 // ---------------------------------------------------------------------------

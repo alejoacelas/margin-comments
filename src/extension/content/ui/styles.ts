@@ -207,7 +207,7 @@ textarea:focus, input:focus { outline: none; border-color: #9ec9ff; }
   padding: 3px 5px 3px 11px; box-shadow: var(--mc-shadow-card); border: 0; cursor: pointer;
 }
 .launcher:hover { box-shadow: 0 2px 8px 3px rgb(60 64 67 / 20%); }
-.launcher .count { font: 600 12px var(--mc-font-ui); color: var(--mc-text-button); margin-right: 2px; }
+.launcher .count { font: 600 12px var(--mc-font-ui); color: var(--mc-text-button); margin: 0 3px 0 1px; min-width: 8px; text-align: center; }
 .launcher .avatar { width: 24px; height: 24px; line-height: 24px; border: 1px solid #000; box-shadow: 1px 1px 0 #000; margin-left: -6px; }
 .launcher .avatar:first-of-type { margin-left: 0; }
 
