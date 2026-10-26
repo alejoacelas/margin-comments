@@ -123,3 +123,19 @@ Three focused passes over commit after round 4.
 | A4 | A new thread was invisible with the sidebar on Resolved | Fixed | Creating a thread switches the filter to Open. e2e "a new thread shows up even if…" |
 | B1 | Non-authoritative Google sign-up could pre-hijack an address's future account | Fixed | Google sign-up/link only when Google is authoritative (Gmail, matching `hd`). `google-live.test.ts` "Google can't sign up, link or take over…" |
 | B2 | After a Google email change that can't be applied, the old address still logged in to the account | Fixed | The old address is unbound (placeholder, no notifications). `google-live.test.ts` "…the old address stops working…" |
+
+## Round 7 — full repository (2026-10-26)
+
+The first attempt at this round was cut short when the disk filled up (other processes); it
+was re-run. A partial finding from the aborted run (discarding an "Unsent drafts" row also
+deleted this tab's own draft for the same thread) was verified and fixed first, with a test.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 / C1 | **Open shadow root: page scripts could read the account email, drafts and comments, and drive the UI with synthetic events (post as the user)** | Fixed | Closed shadow root in production builds; test builds opt into an open root. e2e "page scripts can't read or drive our UI in the production build" |
+| A2 | Clipped text inside a clickable card captured clicks on the card's blank area and cancelled its navigation | Fixed | Hits must have a caret in the range's text under the pointer and no clipping ancestor cutting that point off. e2e "a click on a card's blank area…" |
+| B1 | Bottom-posted and inline email replies were discarded as empty | Fixed | Text after `>`-quoted history is kept when nothing was written above it; unquoted forwards still yield nothing. `email.test.ts` "keeps bottom-posted and inline replies" |
+| C2 | Following a thread link on the already-open page did nothing | Fixed | The thread marker is handled even when the page identity is unchanged. e2e "following a thread link on the page that is already open…" |
+
+Also fixed: two send-time notification tests relied on a 1 ms retry racing the queue's own tick
+(occasionally flaky); they now set the retry time explicitly.

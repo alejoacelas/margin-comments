@@ -20,6 +20,8 @@ const DEFAULT_API = 'https://margin-comments.fly.dev';
 const apiUrl = (arg('--api', process.env.API_URL || DEFAULT_API)).replace(/\/+$/, '');
 const outDir = resolve(root, arg('--out', 'dist'));
 const zip = !args.includes('--no-zip');
+// Test builds expose an open shadow root so Playwright can drive the UI.
+const openShadow = args.includes('--test-open-shadow');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const { key, id } = JSON.parse(readFileSync(join(root, 'src/extension/extension-key.json'), 'utf8'));
 
@@ -30,7 +32,7 @@ mkdirSync(join(outDir, 'fonts'), { recursive: true });
 const common = {
   bundle: true,
   target: 'chrome120',
-  define: { __API_URL__: JSON.stringify(apiUrl) },
+  define: { __API_URL__: JSON.stringify(apiUrl), __OPEN_SHADOW__: JSON.stringify(openShadow) },
   jsx: 'automatic',
   jsxImportSource: 'preact',
   legalComments: 'none',
@@ -103,4 +105,4 @@ if (zip) {
   execFileSync('zip', ['-r', '-X', '-q', zipPath, '.'], { cwd: outDir });
   console.log(`zipped ${zipPath}`);
 }
-console.log(`built extension ${id} -> ${outDir} (API ${apiUrl})`);
+console.log(`built extension ${id} -> ${outDir} (API ${apiUrl}${openShadow ? ', open shadow root for tests' : ''})`);

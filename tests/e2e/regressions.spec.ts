@@ -1,5 +1,5 @@
 // Regression tests for bugs found by review (see REVIEW.md).
-import { closeSidebar, createThread, expect, FAKE, highlightTexts, selectBetween, selectText, setNetwork, setVersion, test, textCenter, uniquePath, waitForEmail } from './helpers';
+import { closeSidebar, createThread, EXT_PATH_CLOSED, expect, FAKE, highlightTexts, Person, selectBetween, selectText, setNetwork, setVersion, test, textCenter, uniquePath, waitForEmail } from './helpers';
 
 test.afterEach(async ({ alice, bob }) => {
   expect([...alice.errors, ...bob.errors], 'host page console errors').toEqual([]);
@@ -401,4 +401,67 @@ test('a new thread shows up even if the sidebar is on the Resolved filter', asyn
   await a.locator('[data-testid=composer-input]').fill('Made while on Resolved');
   await a.locator('[data-testid=composer-input]').press('Enter');
   await expect(a.locator('[data-testid=sidebar-thread].selected')).toContainText('Made while on Resolved');
+});
+
+test("page scripts can't read or drive our UI in the production build (closed shadow root)", async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Open annotation standard', 'Secret-ish comment');
+  const mallory = await Person.launch('prod', `prod-${Date.now()}@example.com`, EXT_PATH_CLOSED);
+  try {
+    await mallory.signInHeadless();
+    const p = await mallory.open(path);
+    // The extension works (the thread is highlighted)…
+    await expect.poll(() => highlightTexts(p)).toEqual(['Open annotation standard']);
+    // …but the page sees an opaque host: no shadow root, no way in.
+    const probe = await p.evaluate(() => {
+      const host = document.querySelector('margin-comments-root')!;
+      return { shadow: host.shadowRoot === null, text: host.textContent, inner: host.querySelectorAll('*').length };
+    });
+    expect(probe).toEqual({ shadow: true, text: '', inner: 0 });
+    // Synthetic events dispatched at the host do nothing (and don't throw).
+    await p.evaluate(() => {
+      const host = document.querySelector('margin-comments-root')!;
+      host.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
+      host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
+    });
+    expect(mallory.errors).toEqual([]);
+  } finally {
+    await mallory.close();
+  }
+});
+
+test("a click on a card's blank area isn't taken over by clipped highlighted text inside it", async ({ alice }) => {
+  const path = uniquePath('clip');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Hidden teaser text that the card clips', 'Clipped inside a card');
+  await a.keyboard.press('Escape');
+  const at = await a.evaluate(() => {
+    const ps = document.querySelectorAll('#card p');
+    const t = ps[1].firstChild as Text;
+    const r = document.createRange();
+    r.setStart(t, 0);
+    r.setEnd(t, 6);
+    const rect = r.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await a.mouse.click(at.x, at.y);
+  await expect(a).toHaveURL(/#card-opened$/);
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+});
+
+test('following a thread link on the page that is already open opens the thread', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'common in medieval manuscripts', 'Linked from an email');
+  const id = await a.locator('[data-testid=thread-card] [data-thread-id]').first().getAttribute('data-thread-id');
+  await a.keyboard.press('Escape');
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+  await a.evaluate(i => {
+    location.hash = `margin-comments=${i}`;
+  }, id);
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText('Linked from an email');
 });

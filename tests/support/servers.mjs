@@ -28,7 +28,12 @@ const BACKEND_PORT = Number(env('BACKEND_PORT', '18787'));
 const WEBHOOK_SECRET = env('WEBHOOK_SECRET', 'whsec_dGVzdC13ZWJob29rLXNlY3JldC0xMjM0NTY3ODkw');
 const WEBHOOK_URL = env('WEBHOOK_URL', `http://127.0.0.1:${BACKEND_PORT}/webhooks/resend`);
 
-execFileSync(process.execPath, [join(root, 'scripts/build-extension.mjs'), '--out', 'build/ext-test', '--api', `http://localhost:${PROXY_PORT}`, '--no-zip'], {
+execFileSync(process.execPath, [join(root, 'scripts/build-extension.mjs'), '--out', 'build/ext-test', '--api', `http://localhost:${PROXY_PORT}`, '--no-zip', '--test-open-shadow'], {
+  cwd: root,
+  stdio: 'inherit',
+});
+// The same build with the production (closed) shadow root, for the isolation test.
+execFileSync(process.execPath, [join(root, 'scripts/build-extension.mjs'), '--out', 'build/ext-test-closed', '--api', `http://localhost:${PROXY_PORT}`, '--no-zip'], {
   cwd: root,
   stdio: 'inherit',
 });

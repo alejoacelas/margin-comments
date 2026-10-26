@@ -5,6 +5,8 @@ import { join, resolve } from 'node:path';
 import { PORTS } from '../../playwright.config';
 
 export const EXT_PATH = resolve('build/ext-test');
+/** The same build with the production (closed) shadow root. */
+export const EXT_PATH_CLOSED = resolve('build/ext-test-closed');
 export const FIXTURES = `http://localhost:${PORTS.fixtures}`;
 export const FAKE = `http://localhost:${PORTS.fakeResend}`;
 export const API = `http://localhost:${PORTS.proxy}`;
@@ -40,13 +42,13 @@ export class Person {
     return this.context.serviceWorkers().find(w => w.url().endsWith('/background.js')) ?? this.firstWorker;
   }
 
-  static async launch(name: string, email: string): Promise<Person> {
+  static async launch(name: string, email: string, extPath = EXT_PATH): Promise<Person> {
     const dir = await mkdtemp(join(tmpdir(), `mc-${name}-`));
     const context = await chromium.launchPersistentContext(dir, {
       channel: 'chromium',
       headless: !process.env.HEADED,
       viewport: { width: 1280, height: 860 },
-      args: [`--disable-extensions-except=${EXT_PATH}`, `--load-extension=${EXT_PATH}`],
+      args: [`--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`],
     });
     let sw = context.serviceWorkers()[0];
     if (!sw) sw = await context.waitForEvent('serviceworker');
@@ -111,6 +113,21 @@ export class Person {
     await page.locator('[data-testid=signin-verify]').click();
     await expect(page.locator('[data-testid=signout]')).toBeVisible();
     await closeSidebar(page);
+  }
+
+  /** Sign in through the API (no UI) and hand the session to the extension. */
+  async signInHeadless() {
+    const start = await (await fetch(`${API}/api/auth/email/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: this.email }) })).json();
+    const mail = await waitForEmail(this.email, m => /sign-in code/.test(m.subject));
+    const code = /(\d{6})/.exec(mail.subject)![1];
+    const r = await (await fetch(`${API}/api/auth/email/verify`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestId: start.requestId, code }) })).json();
+    await this.sw.evaluate(session => chrome.storage.local.set({ session }), { token: r.token, user: r.user });
+    // Restart the worker so it picks the session up, as after a browser restart.
+    const page = this.context.pages()[0] ?? (await this.context.newPage());
+    const cdp = await this.context.newCDPSession(page);
+    const { targetInfos } = await cdp.send('Target.getTargets');
+    const target = targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/background.js'));
+    if (target) await cdp.send('Target.closeTarget', { targetId: target.targetId });
   }
 
   async close() {

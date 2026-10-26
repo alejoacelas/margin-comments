@@ -17,6 +17,7 @@ import { App } from './ui/app';
 import { CSS_TEXT } from './ui/styles';
 
 declare const __API_URL__: string;
+declare const __OPEN_SHADOW__: boolean;
 const API_URL = __API_URL__;
 const API_ORIGIN = new URL(API_URL).origin;
 const HOST_TAG = 'margin-comments-root';
@@ -120,7 +121,10 @@ class MarginComments implements Actions {
     // text offsets never include it), with an open shadow root.
     for (const old of document.querySelectorAll(HOST_TAG)) old.remove();
     this.host = document.createElement(HOST_TAG);
-    const shadow = this.host.attachShadow({ mode: 'open' });
+    // Closed in production: page scripts can't reach into our UI (read the
+    // account, drafts or comments, or drive the controls with synthetic
+    // events). Test builds use an open root so Playwright can drive it.
+    const shadow = this.host.attachShadow({ mode: __OPEN_SHADOW__ ? 'open' : 'closed' });
     try {
       const sheet = new CSSStyleSheet();
       sheet.replaceSync(CSS_TEXT);
@@ -159,6 +163,7 @@ class MarginComments implements Actions {
     this.port.connect();
     this.port.setHello(identity.keys, identity.url, this.instanceId);
     this.pendingOpen = threadIdFromUrl(location.href);
+    this.lastLinkedThread = this.pendingOpen;
     this.urlTimer = setInterval(() => this.checkUrl(), 1000);
     void this.loadFonts();
     if (location.origin === API_ORIGIN && location.pathname === '/auth/verify') void this.handleVerifyPage();
@@ -485,7 +490,18 @@ class MarginComments implements Actions {
     });
   }
 
+  private lastLinkedThread: string | null = null;
+
   private checkUrl() {
+    // A thread link followed within the same page (only the marker changed).
+    const linked = threadIdFromUrl(location.href);
+    if (linked && linked !== this.lastLinkedThread) {
+      this.lastLinkedThread = linked;
+      this.pendingOpen = linked;
+      queueMicrotask(() => this.maybeOpenPending());
+    } else if (!linked) {
+      this.lastLinkedThread = null;
+    }
     const next = currentIdentity();
     if (!next || sameKeys(next.keys, this.identity.keys)) {
       if (next) this.identity = next;

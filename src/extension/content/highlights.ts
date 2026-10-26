@@ -112,6 +112,7 @@ export class Highlighter {
       // text clipped by an overflow container or hidden under something else.
       under ??= document.elementFromPoint(x, y);
       if (!under || !c.item.range.intersectsNode(under)) continue;
+      if (fresh && !textShownAt(c.item.range, x, y)) continue;
       if (c.length < 0) c.length = c.item.range.toString().length;
       if (!best || c.length < best.length) best = c;
     }
@@ -147,4 +148,27 @@ export function pageIsDark(): boolean {
 
 function luminance([r, g, b]: number[]): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+}
+
+/**
+ * Is a character of `range` actually painted at (x, y)? The caret position
+ * under the pointer must fall in the range's text, and no clipping ancestor
+ * (overflow other than visible) may cut that point off.
+ */
+export function textShownAt(range: Range, x: number, y: number): boolean {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  let node: Node | null = null;
+  if (typeof doc.caretPositionFromPoint === 'function') node = doc.caretPositionFromPoint(x, y)?.offsetNode ?? null;
+  else node = document.caretRangeFromPoint?.(x, y)?.startContainer ?? null;
+  if (!node || node.nodeType !== Node.TEXT_NODE || !range.intersectsNode(node)) return false;
+  for (let el = node.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+    const cs = getComputedStyle(el);
+    if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+      const r = el.getBoundingClientRect();
+      if (x < r.left || x > r.right || y < r.top || y > r.bottom) return false;
+    }
+  }
+  return true;
 }

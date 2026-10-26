@@ -85,6 +85,21 @@ const REPLY_HEADER_PATTERNS: RegExp[] = [
 
 function cutQuotedHistory(body: string): string {
   const lines = body.split('\n');
+  const cut = findQuoteHeader(lines);
+  const top = lines.slice(0, cut).filter(l => !/^\s*>/.test(l));
+  if (cut === lines.length || top.join('').trim()) return top.join('\n');
+  // Nothing above the quote header: a bottom-posted or inline reply. Keep the
+  // unquoted lines that follow the quoted history (minus our own footer).
+  // Only when the history really is quoted with ">" can we tell new text from
+  // old; otherwise (e.g. an unquoted forward of our email) there's nothing new.
+  const after = lines.slice(cut + 1);
+  const firstQuoted = after.findIndex(l => /^\s*>/.test(l));
+  if (firstQuoted < 0) return '';
+  const rest = after.slice(firstQuoted).filter(l => !/^\s*>/.test(l));
+  return cutQuotedHistory(rest.join('\n'));
+}
+
+function findQuoteHeader(lines: string[]): number {
   let cut = lines.length;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -112,10 +127,7 @@ function cutQuotedHistory(body: string): string {
       break;
     }
   }
-  return lines
-    .slice(0, cut)
-    .filter(l => !/^\s*>/.test(l))
-    .join('\n');
+  return cut;
 }
 
 const SIGNATURE_LINES = [

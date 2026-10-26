@@ -41,9 +41,12 @@ Choices made while building this without supervision, with the reasoning.
 - **Colors:** yellow for threads you started or replied in, a pastel per thread author (Curius's
   name hash bucketed into 12 hues, skipping yellow) otherwise; darker variants on dark pages.
   Resolved threads are not highlighted (Google Docs behavior).
-- **Shadow DOM, open mode**, attached to `<html>` (outside `<body>`) as a custom element, with
-  `:host { all: initial }`. Open mode so Playwright can test it; nothing sensitive lives in the
-  DOM (the session token stays in the background worker).
+- **Shadow DOM, closed mode in production**, attached to `<html>` (outside `<body>`) as a
+  custom element, with `:host { all: initial }`. Closed, because with an open root any page
+  script could read the account email, drafts and comments in the UI and drive its controls with
+  synthetic events (post as the user). Test builds (`--test-open-shadow`) use an open root so
+  Playwright can drive the UI; one e2e test runs the production build and checks the page can't
+  get in. The session token never leaves the background worker.
 - **Popover top layer** for the adder, cards, sidebar and launcher, so no page z-index or
   transform can cover or displace them.
 - **Event shield** (`early.ts`, at `document_start`): key, pointer, focus, clipboard and input

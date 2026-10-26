@@ -97,6 +97,14 @@ describe('extractReply', () => {
     expect(extractReply('Thanks!', null)).toBe('Thanks!');
     expect(extractReply('We should talk about the best,\ncheapest option.', null)).toBe('We should talk about the best,\ncheapest option.');
   });
+  it('keeps bottom-posted and inline replies', () => {
+    expect(extractReply('On Mon, Oct 26, 2026, Bob <bob@example.com> wrote:\n> Earlier comment.\n\nMy new reply.', null)).toBe('My new reply.');
+    expect(extractReply('On Mon, Bob wrote:\n> First point\nAgreed on that.\n> Second point\nNot this one.', null)).toBe('Agreed on that.\nNot this one.');
+  });
+  it('does not post an unquoted copy of our own notification', () => {
+    const forwarded = 'On Mon, Margin Comments wrote:\nBob replied on "Page"\n\nquote text\n\nReply to this email to respond in the thread.';
+    expect(extractReply(forwarded, null)).toBe('');
+  });
   it('returns empty for a quote-only reply', () => {
     expect(extractReply('\n\nOn Mon, Oct 26, 2026 Margin <x@y.z> wrote:\n> hi', null)).toBe('');
   });
@@ -202,11 +210,11 @@ describe('notifications and inbound replies (through the API)', () => {
   it('queued notifications are re-checked at send time (unsubscribed or removed users get nothing)', async () => {
     const { a, b, p } = await setup();
     t.provider.sent = [];
-    t.provider.failures.push(new RetryableEmailError('503', 1));
+    t.provider.failures.push(new RetryableEmailError('503', 60_000));
     await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'later' } });
-    await t.queue.tick(); // fails transiently
+    await t.queue.tick(); // fails transiently; next attempt in a minute
     await t.app.inject({ method: 'PATCH', url: '/api/me', headers: auth(a.token), payload: { notifyEmail: false } });
-    await new Promise(r => setTimeout(r, 10));
+    t.db.prepare("UPDATE email_jobs SET next_attempt_at = '2000-01-01T00:00:00.000Z' WHERE status = 'pending'").run();
     await t.queue.tick();
     expect(t.provider.sent.filter(s => s.msg.to === 'alice@example.com')).toEqual([]);
     const job = t.db.prepare("SELECT status, last_error FROM email_jobs WHERE kind = 'notification' ORDER BY created_at DESC LIMIT 1").get() as any;
@@ -217,11 +225,11 @@ describe('notifications and inbound replies (through the API)', () => {
   it("queued notifications aren't sent to an address the account no longer uses", async () => {
     const { a, b, p } = await setup();
     t.provider.sent = [];
-    t.provider.failures.push(new RetryableEmailError('503', 1));
+    t.provider.failures.push(new RetryableEmailError('503', 60_000));
     await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'moved' } });
     await t.queue.tick();
     t.db.prepare('UPDATE users SET email = ? WHERE id = ?').run('alice.new@example.com', a.user.id);
-    await new Promise(r => setTimeout(r, 10));
+    t.db.prepare("UPDATE email_jobs SET next_attempt_at = '2000-01-01T00:00:00.000Z' WHERE status = 'pending'").run();
     await t.queue.tick();
     expect(t.provider.sent.filter(s => s.msg.to === 'alice@example.com')).toEqual([]);
   });

@@ -42,6 +42,10 @@ npm test                   # all of the above
 npm run test:smoke         # against production; needs ADMIN_TOKEN in env (source .env)
 ```
 
+The e2e build (`build/ext-test`) uses an open shadow root so Playwright can drive the UI;
+production builds use a closed one (`build/ext-test-closed` is the same build closed, for the
+isolation test).
+
 Playwright starts everything it needs (`playwright.config.ts`): the backend on 18787 with an
 in-memory DB, a proxy on 18788 (the extension's API; `/_test/network` cuts it to simulate
 offline), the fake Resend API on 18901 and fixture pages on 18902. Run `HEADED=1` to watch.
