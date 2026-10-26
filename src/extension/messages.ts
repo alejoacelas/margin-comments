@@ -38,8 +38,6 @@ export type Draft = {
   userId?: string;
   /** The page instance (tab) whose editor wrote it. */
   instanceId?: string;
-  /** Kept aside because another tab wrote different text under the same key. */
-  conflict?: boolean;
 };
 
 export type Connection = 'online' | 'connecting' | 'offline';
@@ -58,14 +56,15 @@ export type RpcMethods = {
   retryOp: { params: { opId: string }; result: { ok: true } };
   discardOp: { params: { opId: string }; result: { ok: true } };
   saveDraft: { params: { draft: Draft }; result: { ok: true } };
-  deleteDraft: { params: { key: string; instanceId?: string }; result: { ok: true } };
+  /** Delete this tab's draft for `key`, and/or the user's drafts for `key` with exactly these texts. */
+  deleteDraft: { params: { key: string; instanceId?: string; texts?: string[] }; result: { ok: true } };
   refresh: { params: Record<string, never>; result: { ok: true } };
 };
 
 export type RpcMethod = keyof RpcMethods;
 
 export type ToBackground =
-  | { t: 'hello'; pageKeys: string[]; url: string }
+  | { t: 'hello'; pageKeys: string[]; url: string; instanceId?: string }
   | { t: 'rpc'; id: number; method: RpcMethod; params: unknown };
 
 export type ToContent =

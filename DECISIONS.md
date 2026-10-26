@@ -84,14 +84,15 @@ Choices made while building this without supervision, with the reasoning.
   verify page's fragment, so the server page has no scripts). Codes: 6 digits, 5 attempts, 20
   minutes, HMAC-hashed; link tokens SHA-256 hashed, single use. Sessions: random bearer tokens
   stored hashed, 180-day sliding expiry.
-- **Google account linking is conservative.** A Google identity is its stable subject. It
-  links to (or follows an email change onto) an address only when Google is authoritative for
-  that address: Gmail, or a Workspace account whose `hd` claim matches the domain. For other
-  addresses Google's `email_verified` only means the address was verified at some point, so a
-  previous owner of a reassigned mailbox could otherwise take over the new owner's account; such
-  sign-ins get "email already in use, use the email code". Accounts are never merged and an
-  existing Google identity is never replaced (an earlier merge-on-collision design broke reply
-  addresses and stranded queued work).
+- **Google sign-in only for addresses Google is authoritative for**: Gmail, or a Workspace
+  account whose `hd` claim matches the domain. For other addresses Google's `email_verified` only
+  means the address was verified at some point, so a previous owner of a reassigned mailbox could
+  pre-create or take over the new owner's account; those users are asked to use the email code.
+  A Google identity is its stable subject; it follows an email change only to a free address
+  Google is authoritative for, and otherwise the old address is unbound from the account (so the
+  mailbox's next owner can't sign in to it or receive its notifications). Accounts are never
+  merged and an existing Google identity is never replaced (an earlier merge-on-collision design
+  broke reply addresses and stranded queued work).
 - **Google sign-in is built but off**: it needs an OAuth client registered in Google Cloud,
   which can't be done unattended. Flow: `chrome.identity.launchWebAuthFlow` → server-side
   authorization code + PKCE → session token returned to the extension's `chromiumapp.org`
@@ -133,9 +134,11 @@ Choices made while building this without supervision, with the reasoning.
   queued; client-generated UUIDs make every create idempotent; failed changes stay visible with
   Retry / Copy text / Discard.
 - **Drafts** saved as you type (debounced), kept until the worker confirms, flushed on
-  `pagehide`. Drafts belong to an account and to the tab that wrote them: another tab never
-  overwrites or deletes them (diverging text is kept aside under "Unsent drafts"), and a change
-  is only ever queued under the account it was typed in.
+  `pagehide`. Drafts belong to an account and to the tab that wrote them (one slot per tab), so
+  tabs never overwrite each other; an editor restores its own tab's draft, else the newest one,
+  and the others are listed under "Unsent drafts". Cancel/Discard delete by the text the user was
+  looking at, never a different text, and never the draft of another tab that is still open. A
+  change is only ever queued under the account it was typed in.
 - **Worker lifecycle:** a 20 s ping keeps the worker alive while pages are open; content scripts
   reconnect and re-introduce themselves when it restarts; fetched thread lists are reconciled with
   live updates (version numbers, tombstones).

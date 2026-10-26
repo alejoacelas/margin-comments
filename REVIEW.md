@@ -111,3 +111,15 @@ Three focused passes over commit after round 4.
 | C1 | A stale submission could be queued under a newly signed-in account | Fixed | Mutations carry the account they were typed under; the worker rejects mismatches and the text stays a draft |
 | C2 | Drafts typed in two tabs overwrote (or cancel-deleted) each other | Fixed | Drafts carry their tab instance; diverging text from another tab is kept aside; deletes are instance-scoped. e2e "reply drafts typed in two tabs both survive" |
 | C3 | Account merges stranded locally queued work | Fixed (by design change) | No merges (B1) |
+
+## Round 6 — full repository (2026-10-26)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 / C2 | Restored drafts couldn't be discarded after a reload (instance check) | Fixed | Per-tab draft slots; Cancel/Discard delete by the text that was shown. e2e "restored drafts can be discarded…" |
+| C1 | Another tab appending to a draft then cancelling erased the original | Fixed | Tabs only write their own slot; deleting by text skips drafts of tabs that are still open. Same e2e |
+| A2 | Clicking highlighted link text navigated away | Fixed | Plain clicks on highlighted links open the thread (capture phase, before SPA routers); modified clicks still navigate. e2e "clicking highlighted link text…" |
+| A3 | Clipped or covered text still captured clicks | Fixed | Hits must intersect the element actually under the pointer. e2e "clicking where clipped highlighted text would be…" |
+| A4 | A new thread was invisible with the sidebar on Resolved | Fixed | Creating a thread switches the filter to Open. e2e "a new thread shows up even if…" |
+| B1 | Non-authoritative Google sign-up could pre-hijack an address's future account | Fixed | Google sign-up/link only when Google is authoritative (Gmail, matching `hd`). `google-live.test.ts` "Google can't sign up, link or take over…" |
+| B2 | After a Google email change that can't be applied, the old address still logged in to the account | Fixed | The old address is unbound (placeholder, no notifications). `google-live.test.ts` "…the old address stops working…" |

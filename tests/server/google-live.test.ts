@@ -64,7 +64,7 @@ describe('Google sign-in', () => {
   });
 
   it('completes the flow with PKCE, creates a session, and states are single-use', async () => {
-    const g = await googleApp({ sub: 'g-1', email: 'Gina@Example.com', email_verified: true, name: 'Gina G' });
+    const g = await googleApp({ sub: 'g-1', email: 'Gina@Gmail.com', email_verified: true, name: 'Gina G' });
     const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });
     expect(start.statusCode).toBe(302);
     const authUrl = new URL(start.headers.location as string);
@@ -80,7 +80,7 @@ describe('Google sign-in', () => {
     expect(g.seen[0].code_verifier).toBeTruthy();
     expect(g.seen[0].client_secret).toBe('csecret');
     const me = await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(token) });
-    expect(me.json().user).toMatchObject({ email: 'gina@example.com', name: 'Gina G' });
+    expect(me.json().user).toMatchObject({ email: 'gina@gmail.com', name: 'Gina G' });
 
     const replay = await t!.app.inject({ method: 'GET', url: `/api/auth/google/callback?code=abc&state=${encodeURIComponent(state)}` });
     expect(replay.statusCode).toBe(400);
@@ -106,22 +106,28 @@ describe('Google sign-in', () => {
     expect(second.user.email).toBe('new@corp.example');
   });
 
-  it("can't take over an email account through a Google login that isn't authoritative for the address", async () => {
-    // Bob owns a (non-Google) mailbox now and signed up with it.
+  it("Google can't sign up, link or take over addresses it isn't authoritative for", async () => {
+    // Alice's Google account lists a (non-Google) company address she no longer owns.
     const profile: Profile = { sub: 'g-alice', email: 'shared@company.example', email_verified: true, name: 'Alice' };
     await googleApp(profile);
+    expect((await signInGoogle()).error).toBe('use_email_code'); // no pre-hijack sign-up
     const bob = await signIn(t!, 'shared@company.example');
-    // Alice's old Google account still lists that address as verified.
-    const r = await signInGoogle();
-    expect(r.error).toBe('email_in_use');
+    expect((await signInGoogle()).error).toBe('use_email_code'); // no takeover
     expect((await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(bob.token) })).json().user.email).toBe('shared@company.example');
-    // And an email change onto Bob's address doesn't move or merge anything.
-    profile.email = 'alice.personal@elsewhere.example';
-    const alice = await signInGoogle();
-    profile.email = 'shared@company.example';
-    const again = await signInGoogle();
-    expect(again.user.id).toBe(alice.user.id);
-    expect(again.user.email).toBe('alice.personal@elsewhere.example');
+  });
+
+  it('when Google reports a new address that can not be bound, the old address stops working for that account', async () => {
+    const profile: Profile = { sub: 'g-w', email: 'old@corp.example', email_verified: true, name: 'W', hd: 'corp.example' };
+    await googleApp(profile);
+    const first = await signInGoogle();
+    await signIn(t!, 'new@corp.example'); // the new address already has an email account
+    profile.email = 'new@corp.example';
+    const second = await signInGoogle();
+    expect(second.user.id).toBe(first.user.id);
+    expect(second.user.email).toMatch(/@unbound\.invalid$/);
+    // Whoever gets old@ next gets a fresh account, not this one.
+    const next = await signIn(t!, 'old@corp.example');
+    expect(next.user.id).not.toBe(first.user.id);
   });
 
   it('links Google to an existing account when Google is authoritative (Gmail), but never replaces an identity', async () => {

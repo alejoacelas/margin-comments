@@ -99,8 +99,8 @@ export class BackgroundPort {
     }
   }
 
-  setHello(pageKeys: string[], url: string) {
-    this.hello = { t: 'hello', pageKeys, url };
+  setHello(pageKeys: string[], url: string, instanceId?: string) {
+    this.hello = { t: 'hello', pageKeys, url, instanceId };
     this.send(this.hello);
   }
 

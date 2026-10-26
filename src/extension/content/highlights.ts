@@ -99,6 +99,7 @@ export class Highlighter {
    */
   hitTest(x: number, y: number, fresh = true): string | null {
     let best: Cached | null = null;
+    let under: Element | null | undefined;
     const now = performance.now();
     for (const c of this.items) {
       if (fresh || !c.rects || now - c.rectsAt > HOVER_CACHE_MS) {
@@ -107,6 +108,10 @@ export class Highlighter {
       }
       const hit = c.rects.some(r => x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1);
       if (!hit) continue;
+      // The text must actually be what's under the pointer: rects also cover
+      // text clipped by an overflow container or hidden under something else.
+      under ??= document.elementFromPoint(x, y);
+      if (!under || !c.item.range.intersectsNode(under)) continue;
       if (c.length < 0) c.length = c.item.range.toString().length;
       if (!best || c.length < best.length) best = c;
     }

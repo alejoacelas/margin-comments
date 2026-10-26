@@ -157,7 +157,7 @@ class MarginComments implements Actions {
     this.listen();
     this.anchors.start();
     this.port.connect();
-    this.port.setHello(identity.keys, identity.url);
+    this.port.setHello(identity.keys, identity.url, this.instanceId);
     this.pendingOpen = threadIdFromUrl(location.href);
     this.urlTimer = setInterval(() => this.checkUrl(), 1000);
     void this.loadFonts();
@@ -345,7 +345,9 @@ class MarginComments implements Actions {
     document.addEventListener('keyup', e => this.onKeyUp(e), opts);
     document.addEventListener('keydown', e => this.onKeyDown(e), opts);
     document.addEventListener('selectionchange', () => this.onSelectionChange(), opts);
-    document.addEventListener('click', e => this.onClick(e), opts);
+    // Capture phase: a click on highlighted link text must be handled before
+    // SPA routers act on it (they respect defaultPrevented).
+    document.addEventListener('click', e => this.onClick(e), { signal: this.abort.signal, capture: true });
     document.addEventListener('mousemove', e => this.onMouseMove(e), { signal: this.abort.signal, passive: true });
     window.addEventListener('scroll', () => this.onLayoutChange(), passive);
     window.addEventListener(
@@ -439,6 +441,10 @@ class MarginComments implements Actions {
     const id = this.highlighter.hitTest(e.clientX, e.clientY);
     const ui = this.store.state.ui;
     if (id) {
+      // A plain click on highlighted link text opens the thread instead of
+      // navigating; modified clicks (new tab, etc.) still follow the link.
+      const link = (e.target as Element | null)?.closest?.('a[href]');
+      if (link && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && !e.defaultPrevented) e.preventDefault();
       if (ui.composer && !this.composerText.trim()) this.store.setUi({ composer: null });
       if (!ui.composer) this.openThread(id);
       return;
@@ -489,7 +495,7 @@ class MarginComments implements Actions {
     this.identity = next;
     this.store.set({ threads: new Map(), loaded: false, pageKeys: next.keys, pageUrl: next.url });
     this.store.setUi({ activeThreadId: null, composer: null, adder: null });
-    this.port.setHello(next.keys, next.url);
+    this.port.setHello(next.keys, next.url, this.instanceId);
     const fromLink = threadIdFromUrl(location.href);
     if (fromLink) this.pendingOpen = fromLink;
   }
@@ -608,7 +614,8 @@ class MarginComments implements Actions {
     );
     this.anchors.seed(c.threadId, c.selectors, c.range);
     this.composerText = '';
-    this.store.setUi({ composer: null, activeThreadId: c.threadId });
+    // A new thread is open: make sure an open sidebar shows it.
+    this.store.setUi({ composer: null, activeThreadId: c.threadId, sidebarFilter: 'open' });
   }
 
   cancelComposer() {
@@ -682,8 +689,14 @@ class MarginComments implements Actions {
     return `${userId ?? ''}|${key}`;
   }
 
+  /** Text an editor should start with: this tab's draft, else the newest saved one for the key. */
   draftText(key: string): string | undefined {
-    return this.draftTimers.get(this.slot(key))?.draft.text ?? this.store.state.drafts.find(d => d.key === key)?.text;
+    const pending = this.draftTimers.get(this.slot(key))?.draft.text;
+    if (pending !== undefined) return pending;
+    const saved = this.store.state.drafts.filter(d => d.key === key);
+    const own = saved.find(d => d.instanceId === this.instanceId);
+    if (own) return own.text;
+    return saved.sort((a, b) => b.updatedAt - a.updatedAt)[0]?.text;
   }
 
   /** Persist a pending draft (by slot); it stays queued here until the background confirms. */
@@ -719,12 +732,17 @@ class MarginComments implements Actions {
     if (entry) entry.timer = null;
   }
 
-  deleteDraft(key: string) {
+  /**
+   * Discard this tab's draft for `key`, plus saved drafts with exactly the
+   * given texts (what the user was looking at when discarding) — never a
+   * different text another tab saved meanwhile.
+   */
+  deleteDraft(key: string, texts: string[] = []) {
     const slot = this.slot(key);
     const entry = this.draftTimers.get(slot);
     if (entry?.timer) clearTimeout(entry.timer);
     this.draftTimers.delete(slot);
-    void this.port.call('deleteDraft', { key, instanceId: this.instanceId }).catch(() => {});
+    void this.port.call('deleteDraft', { key, instanceId: this.instanceId, texts }).catch(() => {});
   }
 
   resumeDraft(draft: Draft) {

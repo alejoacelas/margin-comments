@@ -23,6 +23,8 @@ type PortInfo = {
   /** Threads deleted while this page was open; a fetch can't resurrect them. */
   tombstones: Set<string>;
   loadFailures: number;
+  /** The content script instance (tab page load) behind this port. */
+  instanceId?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -90,9 +92,40 @@ function draftsFor(info: PortInfo): Draft[] {
   });
 }
 
-/** Drafts are stored per account: "<user>|<key>". */
-function draftSlot(key: string, userId = session?.user.id): string | null {
-  return userId ? `${userId}|${key}` : null;
+/**
+ * Drafts are stored per account, editor key and tab: "<user>|<key>|<tab>".
+ * Each tab writes only its own slot, so tabs never overwrite each other; a
+ * draft is removed by its own tab, or by text (what the user saw) when it is
+ * discarded, cancelled or submitted from another tab.
+ */
+function draftSlot(key: string, instanceId: string, userId = session?.user.id): string | null {
+  return userId ? `${userId}|${key}|${instanceId}` : null;
+}
+
+function normalizedText(s: string): string {
+  return s.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Remove the user's drafts for `key` whose text is in `texts` (or a prefix of
+ * `subsumedBy`). Drafts of other tabs that are still open are kept unless
+ * `includeLive` — those tabs still show (and own) their text.
+ */
+function removeDraftsByText(userId: string, key: string, texts: string[], subsumedBy?: string, includeLive = false, self?: string): boolean {
+  const wanted = new Set(texts.map(normalizedText).filter(Boolean));
+  const sub = subsumedBy ? normalizedText(subsumedBy) : null;
+  const live = new Set([...ports].map(p => p.instanceId).filter((x): x is string => !!x && x !== self));
+  let changed = false;
+  for (const [slot, d] of Object.entries(drafts)) {
+    if (d.userId !== userId || d.key !== key) continue;
+    if (!includeLive && d.instanceId && live.has(d.instanceId)) continue;
+    const t = normalizedText(d.text);
+    if (wanted.has(t) || (sub !== null && sub.startsWith(t))) {
+      delete drafts[slot];
+      changed = true;
+    }
+  }
+  return changed;
 }
 
 function sendState(info: PortInfo) {
@@ -219,6 +252,7 @@ chrome.runtime.onConnect.addListener(port => {
 async function onPortMessage(info: PortInfo, msg: ToBackground) {
   if (msg.t === 'hello') {
     info.keys = Array.isArray(msg.pageKeys) ? msg.pageKeys.slice(0, 2).filter(k => typeof k === 'string') : [];
+    if (typeof msg.instanceId === 'string') info.instanceId = msg.instanceId;
     info.threads.clear();
     info.liveAt.clear();
     info.tombstones.clear();
@@ -270,8 +304,8 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     if (!token) {
       const error = hash.get('error');
       throw new Error(
-        error === 'email_in_use'
-          ? 'That email already has an account. Sign in with the email code instead.'
+        error === 'email_in_use' || error === 'use_email_code'
+          ? 'Use the email code to sign in with this address.'
           : error === 'google_failed'
             ? 'Google sign-in failed'
             : 'Sign-in was cancelled',
@@ -311,16 +345,14 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
       status: 'pending',
     } as Op;
     ops.push(full);
-    // Drop the draft only if it's the text that was submitted: another tab may
-    // have saved different text under the same key since.
-    const slot = draftKey ? draftSlot(draftKey) : null;
-    const stored = slot ? drafts[slot] : undefined;
-    const draftConsumed =
-      !!stored &&
-      (draftText === undefined || stored.text.trim() === draftText.trim()) &&
-      (!draftInstance || !stored.instanceId || stored.instanceId === draftInstance || stored.text.trim() === (draftText ?? '').trim());
-    if (draftConsumed) delete drafts[slot!];
-    // The op is on disk before we acknowledge it: closing the tab now loses nothing.
+    // The submitted text consumes this tab's draft and any draft it contains
+    // (e.g. one this editor restored and extended); diverging drafts from
+    // other tabs stay.
+    if (draftKey && draftInstance) {
+      const own = draftSlot(draftKey, draftInstance);
+      if (own) delete drafts[own];
+    }
+    const draftConsumed = !!draftKey && (removeDraftsByText(session.user.id, draftKey, [], draftText ?? '', true) || !!draftInstance);
     await persist(draftConsumed ? ['outbox', 'drafts'] : ['outbox']);
     broadcastState();
     void flush();
@@ -359,38 +391,27 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
   async saveDraft({ draft }) {
     // Saved for the account that typed it (it may have signed out since).
     const owner = draft.userId ?? session?.user.id;
-    const slot = draftSlot(draft.key, owner);
+    const slot = owner ? draftSlot(draft.key, draft.instanceId ?? 'legacy', owner) : null;
     if (!slot || !owner) throw new Error('Sign in first');
-    const existing = drafts[slot];
-    // Another tab wrote different text under the same key: keep theirs aside
-    // (listed under "Unsent drafts") instead of overwriting it.
-    if (
-      existing &&
-      existing.instanceId &&
-      draft.instanceId &&
-      existing.instanceId !== draft.instanceId &&
-      existing.text.trim() &&
-      existing.text.trim() !== draft.text.trim() &&
-      !draft.text.trim().startsWith(existing.text.trim())
-    ) {
-      const asideKey = `${existing.key}#${existing.instanceId}`;
-      drafts[draftSlot(asideKey, owner)!] = { ...existing, key: asideKey, conflict: true };
-    }
-    if (!draft.text.trim()) {
-      if (!existing || !existing.instanceId || existing.instanceId === draft.instanceId) delete drafts[slot];
-    } else drafts[slot] = { ...draft, userId: owner, updatedAt: Date.now() };
+    if (!draft.text.trim()) delete drafts[slot];
+    else drafts[slot] = { ...draft, userId: owner, updatedAt: Date.now() };
     pruneDrafts();
     await persist(['drafts']);
     broadcastState();
     return { ok: true as const };
   },
-  async deleteDraft({ key, instanceId }) {
-    const slot = draftSlot(key);
-    // Only the tab that wrote a draft (or anyone, for drafts without an
-    // owner tab, e.g. ones kept aside) can delete it.
-    const stored = slot ? drafts[slot] : undefined;
-    if (slot && stored && (!instanceId || !stored.instanceId || stored.instanceId === instanceId || stored.conflict)) {
-      delete drafts[slot];
+  async deleteDraft({ key, instanceId, texts }) {
+    if (!session) return { ok: true as const };
+    let changed = false;
+    if (instanceId) {
+      const own = draftSlot(key, instanceId);
+      if (own && drafts[own]) {
+        delete drafts[own];
+        changed = true;
+      }
+    }
+    if (texts?.length && removeDraftsByText(session.user.id, key, texts, undefined, false, instanceId)) changed = true;
+    if (changed) {
       await persist(['drafts']);
       broadcastState();
     }

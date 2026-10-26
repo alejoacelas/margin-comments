@@ -296,3 +296,100 @@ test('reply drafts typed in two tabs both survive', async ({ alice }) => {
   const other = shown === 'Reply typed in tab one' ? 'Different reply from tab two' : 'Reply typed in tab one';
   await expect(c.locator('[data-testid=draft-row]')).toContainText(other);
 });
+
+test('restored drafts can be discarded, and cancelling never deletes a draft another open tab owns', async ({ alice }) => {
+  const path = uniquePath('article');
+  let a = await alice.open(path);
+  await alice.signIn(a);
+  // A new-thread draft survives a closed tab and can then be discarded for good.
+  await selectText(a, 'Social highlights for friends');
+  await a.locator('[data-testid=adder]').click();
+  await a.locator('[data-testid=composer-input]').fill('Draft to discard');
+  await a.waitForTimeout(700);
+  await a.close();
+  a = await alice.open(path);
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=draft-row]').getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(a.locator('[data-testid=draft-row]')).toHaveCount(0);
+  await a.reload();
+  await alice.openSidebar(a);
+  await expect(a.locator('[data-testid=draft-row]')).toHaveCount(0);
+  await closeSidebar(a);
+
+  // Tab A keeps typing a reply; tab B restores it, extends it, then cancels.
+  await createThread(a, 'Open annotation standard', 'Thread for drafts');
+  await a.keyboard.press('Escape');
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=sidebar-thread]').click();
+  await a.locator('[data-testid=sidebar-thread] [data-testid=reply-input]').fill('Original thought');
+  await a.waitForTimeout(700);
+  const b = await alice.open(path);
+  await alice.openSidebar(b);
+  await b.locator('[data-testid=sidebar-thread]').click();
+  const boxB = b.locator('[data-testid=sidebar-thread] [data-testid=reply-input]');
+  await expect(boxB).toHaveValue('Original thought');
+  await boxB.fill('Original thought, extended in tab B');
+  await b.waitForTimeout(700);
+  await b.locator('[data-testid=sidebar-thread] .text-btn').getByText('Cancel').click();
+  await b.waitForTimeout(300);
+  await b.close();
+  await a.close();
+  const c = await alice.open(path);
+  await alice.openSidebar(c);
+  await c.locator('[data-testid=sidebar-thread]').click();
+  await expect(c.locator('[data-testid=sidebar-thread] [data-testid=reply-input]')).toHaveValue('Original thought');
+  // Cancelling the restored draft here (no other tab open) discards it.
+  await c.locator('[data-testid=sidebar-thread] .text-btn').getByText('Cancel').click();
+  await c.waitForTimeout(300);
+  await c.reload();
+  await alice.openSidebar(c);
+  await c.locator('[data-testid=sidebar-thread]').click();
+  await expect(c.locator('[data-testid=sidebar-thread] [data-testid=reply-input]')).toHaveValue('');
+});
+
+test('clicking highlighted link text opens the thread without navigating', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'added glosses that explained', 'About the glosses link');
+  await a.keyboard.press('Escape');
+  const before = a.url();
+  const at = await textCenter(a, 'glosses that');
+  await a.mouse.click(at.x, at.y);
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText('About the glosses link');
+  expect(a.url()).toBe(before);
+});
+
+test("clicking where clipped highlighted text would be doesn't open its thread", async ({ alice }) => {
+  const path = uniquePath('clip');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'second paragraph is clipped away', 'Hidden by overflow');
+  await a.keyboard.press('Escape');
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+  const at = await a.evaluate(() => {
+    const t = document.getElementById('clipped')!.firstChild as Text;
+    const r = document.createRange();
+    r.setStart(t, 9);
+    r.setEnd(t, 15);
+    const rect = r.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  });
+  await a.mouse.click(at.x, at.y);
+  await a.waitForTimeout(300);
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+  expect(await a.evaluate(() => (window as any).__covered)).toBe(1);
+});
+
+test('a new thread shows up even if the sidebar is on the Resolved filter', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=filter-resolved]').click();
+  await selectText(a, 'Threads with email replies');
+  await a.locator('[data-testid=adder]').click();
+  await a.locator('[data-testid=composer-input]').fill('Made while on Resolved');
+  await a.locator('[data-testid=composer-input]').press('Enter');
+  await expect(a.locator('[data-testid=sidebar-thread].selected')).toContainText('Made while on Resolved');
+});

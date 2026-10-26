@@ -254,7 +254,8 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
   );
 }
 
-function DraftRow({ draft, actions, orphaned }: { draft: Draft; actions: Actions; orphaned?: boolean }) {
+function DraftRow({ draft, actions, note }: { draft: Draft; actions: Actions; note?: string }) {
+  const orphaned = !!note;
   return (
     <div class="row" data-testid="draft-row">
       {draft.anchor ? (
@@ -263,9 +264,7 @@ function DraftRow({ draft, actions, orphaned }: { draft: Draft; actions: Actions
         </div>
       ) : null}
       <div class="row-first">{draft.text}</div>
-      {orphaned ? (
-        <div class="c-status">{draft.conflict ? 'Saved from another tab.' : 'The comment this was for was deleted.'}</div>
-      ) : null}
+      {note ? <div class="c-status">{note}</div> : null}
       <div class="row-end" style={{ justifyContent: 'flex-start' }}>
         {orphaned ? null : (
           <button class="link-btn" onClick={() => actions.resumeDraft(draft)}>
@@ -275,7 +274,7 @@ function DraftRow({ draft, actions, orphaned }: { draft: Draft; actions: Actions
         <button class="link-btn muted" onClick={() => actions.copy(draft.text)}>
           Copy text
         </button>
-        <button class="link-btn muted" onClick={() => actions.deleteDraft(draft.key)}>
+        <button class="link-btn muted" onClick={() => actions.deleteDraft(draft.key, [draft.text])}>
           Discard
         </button>
       </div>
@@ -321,7 +320,16 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
     if (!ra || !rb) return 0;
     return ra.top + window.scrollY - (rb.top + window.scrollY) || ra.left - rb.left;
   });
-  const newDrafts = state.drafts.filter(d => d.key.startsWith('new:') && d.anchor && d.text.trim() && !d.conflict);
+  const dedupe = (list: Draft[]) => {
+    const seen = new Set<string>();
+    return list.filter(d => {
+      const id = `${d.key}\u0000${d.text.replace(/\s+/g, ' ').trim()}`;
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  };
+  const newDrafts = dedupe(state.drafts.filter(d => d.key.startsWith('new:') && d.anchor && d.text.trim()));
   // Changes that failed for good and whose thread is gone (e.g. deleted by its
   // author while you were offline): keep the text visible so it isn't lost.
   const visibleIds = new Set(threads.map(t => t.id));
@@ -334,14 +342,27 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
   );
   // Reply/edit drafts whose thread or comment was deleted: still recoverable.
   const orphanDrafts = state.loaded
-    ? state.drafts.filter(d => {
-        if (!d.text.trim()) return false;
-        if (d.conflict) return true;
-        if (d.key.startsWith('reply:')) return !visibleIds.has(d.key.slice(6));
-        if (d.key.startsWith('edit:')) return !commentIds.has(d.key.slice(5));
-        return false;
-      })
+    ? dedupe(
+        state.drafts.filter(d => {
+          if (!d.text.trim()) return false;
+          if (d.key.startsWith('reply:')) return !visibleIds.has(d.key.slice(6));
+          if (d.key.startsWith('edit:')) return !commentIds.has(d.key.slice(5));
+          return false;
+        }),
+      )
     : [];
+  // Reply/edit drafts for live threads that the editor isn't showing (other
+  // tabs wrote different text): listed so nothing is hidden.
+  const extraDrafts: Draft[] = [];
+  for (const key of new Set(state.drafts.map(d => d.key))) {
+    if (!key.startsWith('reply:') && !key.startsWith('edit:')) continue;
+    const live = key.startsWith('reply:') ? visibleIds.has(key.slice(6)) : commentIds.has(key.slice(5));
+    if (!live) continue;
+    const shown = (actions.draftText(key) ?? '').replace(/\s+/g, ' ').trim();
+    for (const d of dedupe(state.drafts.filter(x => x.key === key))) {
+      if (d.text.trim() && d.text.replace(/\s+/g, ' ').trim() !== shown) extraDrafts.push(d);
+    }
+  }
 
   return (
     <Layer class="sidebar" role="complementary" label="Comments on this page">
@@ -374,14 +395,17 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
                 ))}
               </>
             ) : null}
-            {newDrafts.length || orphanDrafts.length ? (
+            {newDrafts.length || orphanDrafts.length || extraDrafts.length ? (
               <>
                 <div class="sb-section">Unsent drafts</div>
                 {newDrafts.map(d => (
-                  <DraftRow key={d.key} draft={d} actions={actions} />
+                  <DraftRow key={`${d.key}|${d.instanceId}`} draft={d} actions={actions} />
                 ))}
                 {orphanDrafts.map(d => (
-                  <DraftRow key={d.key} draft={d} actions={actions} orphaned />
+                  <DraftRow key={`${d.key}|${d.instanceId}`} draft={d} actions={actions} note="The comment this was for was deleted." />
+                ))}
+                {extraDrafts.map(d => (
+                  <DraftRow key={`${d.key}|${d.instanceId}`} draft={d} actions={actions} note="Saved in another tab." />
                 ))}
               </>
             ) : null}

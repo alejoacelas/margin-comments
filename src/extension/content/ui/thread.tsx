@@ -33,7 +33,8 @@ function Editor(props: {
   draftKey: string;
   submitLabel: string;
   onSubmit: (text: string) => Promise<void>;
-  onCancel: () => void;
+  /** Called with the texts to discard: what the editor started with and what it holds now. */
+  onCancel: (texts: string[]) => void;
   /** Escape key; defaults to onCancel. */
   onEscape?: () => void;
   actions: Actions;
@@ -97,7 +98,8 @@ function Editor(props: {
             void submit();
           } else if (e.key === 'Escape') {
             e.preventDefault();
-            (props.onEscape ?? props.onCancel)();
+            if (props.onEscape) props.onEscape();
+            else props.onCancel([props.initial, text]);
           }
         }}
       />
@@ -105,7 +107,7 @@ function Editor(props: {
       {props.pill ? (
         text.trim() ? (
           <div class="row-end">
-            <button class="text-btn" onClick={props.onCancel}>
+            <button class="text-btn" onClick={() => props.onCancel([props.initial, text])}>
               Cancel
             </button>
             <button class="pill-btn" disabled={busy} onClick={() => void submit()}>
@@ -115,7 +117,7 @@ function Editor(props: {
         ) : null
       ) : (
         <div class="row-end">
-          <button class="cancel-link" onClick={props.onCancel}>
+          <button class="cancel-link" onClick={() => props.onCancel([props.initial, text])}>
             cancel
           </button>
           <button
@@ -172,8 +174,8 @@ function CommentItem(props: {
               await actions.edit(thread, comment.id, body, editKey);
               setEditing(false);
             }}
-            onCancel={() => {
-              actions.deleteDraft(editKey);
+            onCancel={texts => {
+              actions.deleteDraft(editKey, texts);
               setEditing(false);
             }}
           />
@@ -244,8 +246,8 @@ export function ReplyBox({ thread, drafts, actions }: { thread: ViewThread; draf
           await actions.reply(thread, attemptRef.current.id, body, key);
           attemptRef.current = null;
         }}
-        onCancel={() => {
-          actions.deleteDraft(key);
+        onCancel={texts => {
+          actions.deleteDraft(key, texts);
           setResetKey(k => k + 1);
         }}
         onEscape={() => actions.closeCard()}

@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Clip Fixture</title><link rel="canonical" href="http://localhost:18902/clip">
+<style>body{font:17px/1.6 Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px}
+#box{height:52px;overflow:clip;border:1px solid #ccc}
+#cover{position:relative;margin-top:-1px;display:block;width:100%;height:60px}</style></head>
+<body><h1>Clipped text</h1>
+<div id="box"><p id="visible">This first line is visible inside the clipped box.</p><p id="clipped">This second paragraph is clipped away by the box and cannot be seen.</p></div>
+<button id="cover" onclick="window.__covered = (window.__covered||0)+1">A page button that sits where the clipped text would be</button>
+<p>Afterwards, ordinary text continues below the box.</p>
+</body></html>

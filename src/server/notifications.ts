@@ -7,7 +7,7 @@ import type { EmailQueue } from './email/queue';
 import { replyAddress } from './email/reply-token';
 import { loginEmail, notificationEmail } from './email/templates';
 import { canAccessGroup, participants } from './threads';
-import type { UserRow } from './users';
+import { isUnboundEmail, type UserRow } from './users';
 
 export function unsubscribeSig(secret: string, userId: string): string {
   return base32Encode(hmac(secret, `unsubscribe:v1:${userId}`).subarray(0, 10));
@@ -38,7 +38,7 @@ export function notifyNewComment(db: DB, queue: EmailQueue, config: Config, thre
   const link = threadLink(thread.url, thread.id);
 
   for (const user of participants(db, thread.id)) {
-    if (user.id === author.id || !user.notify_email) continue;
+    if (user.id === author.id || !user.notify_email || isUnboundEmail(user.email)) continue;
     // People who lost access to the thread's group get nothing.
     if (!canAccessGroup(db, user, thread.groupId)) continue;
     const content = notificationEmail({

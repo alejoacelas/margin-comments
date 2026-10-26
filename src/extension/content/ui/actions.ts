@@ -25,7 +25,7 @@ export interface Actions {
   saveDraft(key: string, text: string): void;
   /** Latest draft text for a key, including saves not yet confirmed. */
   draftText(key: string): string | undefined;
-  deleteDraft(key: string): void;
+  deleteDraft(key: string, texts?: string[]): void;
   resumeDraft(draft: Draft): void;
 
   openThread(id: string, opts?: { scroll?: boolean; fromSidebar?: boolean }): void;

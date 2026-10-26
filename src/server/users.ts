@@ -86,26 +86,44 @@ export type GoogleIdentity = {
   authoritative: boolean;
 };
 
-export type GoogleResult = { ok: true; user: UserRow } | { ok: false; error: 'email_in_use' };
+export type GoogleResult = { ok: true; user: UserRow } | { ok: false; error: 'email_in_use' | 'use_email_code' };
+
+/** Placeholder address for a Google account whose real address we can't bind. */
+export function unboundEmail(sub: string): string {
+  return `google-${sub.replace(/[^A-Za-z0-9_-]/g, '')}@unbound.invalid`;
+}
+
+export function isUnboundEmail(email: string): boolean {
+  return email.endsWith('@unbound.invalid');
+}
 
 /**
- * Sign-in with Google. The stable subject identifies the account; an email
- * address only links to an existing account when Google is authoritative for
- * it, and an account's Google identity is never replaced or merged away.
+ * Sign-in with Google. The stable subject identifies the account. Google only
+ * creates or links accounts for addresses it is authoritative for (Gmail, or
+ * a Workspace domain via `hd`); otherwise its "verified" may be stale (a
+ * reassigned mailbox), so those addresses use email-code sign-in. An
+ * account's Google identity is never replaced, and accounts are never merged.
  */
 export function upsertGoogleUser(db: DB, g: GoogleIdentity): GoogleResult {
   return tx(db, () => {
     const bySub = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(g.sub) as UserRow | undefined;
     if (bySub) {
-      // Follow an email change only to a free address Google vouches for.
-      if (bySub.email !== g.email && g.authoritative && !getUserByEmail(db, g.email)) {
-        db.prepare('UPDATE users SET email = ? WHERE id = ?').run(g.email, bySub.id);
+      if (bySub.email !== g.email) {
+        if (g.authoritative && !getUserByEmail(db, g.email)) {
+          db.prepare('UPDATE users SET email = ? WHERE id = ?').run(g.email, bySub.id);
+        } else if (!isUnboundEmail(bySub.email)) {
+          // Google says this account no longer has its old address, and we
+          // can't move it to the new one: unbind the old address so whoever
+          // gets that mailbox next can't sign in here or read notifications.
+          db.prepare('UPDATE users SET email = ? WHERE id = ?').run(unboundEmail(g.sub), bySub.id);
+        }
       }
       return { ok: true, user: getUser(db, bySub.id)! } as const;
     }
+    if (!g.authoritative) return { ok: false, error: 'use_email_code' } as const;
     const existing = getUserByEmail(db, g.email);
     if (existing) {
-      if (existing.google_sub || !g.authoritative) return { ok: false, error: 'email_in_use' } as const;
+      if (existing.google_sub) return { ok: false, error: 'email_in_use' } as const;
       db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(g.sub, existing.id);
       return { ok: true, user: getUser(db, existing.id)! } as const;
     }
