@@ -6,7 +6,7 @@ import { render } from 'preact';
 import type { Selector, TextPositionSelector, Thread } from '../../shared/types';
 import { LIMITS } from '../../shared/types';
 import { type PageIdentity, pageIdentity, threadIdFromUrl } from '../../shared/url';
-import type { Draft, NewOp, ToContent } from '../messages';
+import type { Draft, InputCommand, InputEventType, InputInit, NewOp, ToContent } from '../messages';
 import { anchorSelectors, describeRange } from './anchoring/anchor';
 import { AnchorManager } from './anchoring/manager';
 import { Highlighter, hueIndexFor, pageIsDark } from './highlights';
@@ -25,7 +25,7 @@ const HOST_TAG = 'margin-comments-root';
 declare global {
   interface Window {
     __marginComments?: { destroy(): void };
-    __marginCommentsShield?: { host: Element | null; resolve: ((e: Event) => Node | null) | null; late: boolean };
+    __marginCommentsShield?: { host: Element | null; resolve: ((e: Event) => Node | null) | null };
   }
 }
 
@@ -89,6 +89,8 @@ const sameKeys = (a: string[], b: string[]) => a.length === b.length && a.every(
 
 class MarginComments implements Actions {
   readonly apiUrl = API_URL;
+  readonly inputUrl = chrome.runtime.getURL('input.html');
+  private fields = new Map<string, { init: InputInit; onEvent: (type: InputEventType, value: string) => void; current: () => string }>();
   private store: Store;
   private port: BackgroundPort;
   private anchors: AnchorManager;
@@ -118,7 +120,6 @@ class MarginComments implements Actions {
       adder: null,
       layoutTick: 0,
       toast: null,
-      editingBlocked: false,
     };
     this.store = new Store({
       user: null,
@@ -164,11 +165,6 @@ class MarginComments implements Actions {
       window.__marginCommentsShield.resolve = e => resolveInner(shadow, e);
     }
 
-    // Injected after the page loaded (install/update): page listeners that
-    // registered before our event shield could see keystrokes, so editors stay
-    // off until the page is reloaded. Reading threads still works.
-    this.lateInjected = !!window.__marginCommentsShield?.late;
-    this.store.setUi({ editingBlocked: this.lateInjected });
     this.highlighter = new Highlighter(pageIsDark());
     this.anchors = new AnchorManager(
       () => document.body,
@@ -180,7 +176,10 @@ class MarginComments implements Actions {
     this.port = new BackgroundPort(
       msg => this.onMessage(msg),
       () => this.teardown(),
-      () => this.flushDrafts(),
+      () => {
+        this.reopenFields();
+        this.flushDrafts();
+      },
     );
 
     render(<App store={this.store} actions={this} />, this.container);
@@ -310,6 +309,9 @@ class MarginComments implements Actions {
       }
       case 'toggle-sidebar':
         this.toggleSidebar();
+        break;
+      case 'input-event':
+        this.fields.get(msg.sid)?.onEvent(msg.type, msg.value);
         break;
     }
   }
@@ -627,7 +629,6 @@ class MarginComments implements Actions {
   private composerAttempt: { threadId: string; commentId: string; body: string } | null = null;
   /** Identifies this page's editors, so drafts from other tabs aren't overwritten or deleted. */
   private readonly instanceId = crypto.randomUUID();
-  private lateInjected = false;
 
   async createThread(body: string) {
     const c0 = this.store.state.ui.composer;
@@ -729,6 +730,28 @@ class MarginComments implements Actions {
     if (existing?.timer) clearTimeout(existing.timer);
     const timer = setTimeout(() => this.flushDraft(slot), 400);
     this.draftTimers.set(slot, { timer, draft });
+  }
+
+  openField(sid: string, init: InputInit, onEvent: (type: InputEventType, value: string) => void, current: () => string) {
+    this.fields.set(sid, { init, onEvent, current });
+    void this.port.call('inputOpen', { sid, init }).catch(() => {});
+  }
+
+  fieldCommand(sid: string, cmd: InputCommand) {
+    if (!this.fields.has(sid)) return;
+    void this.port.call('inputCommand', { sid, cmd }).catch(() => {});
+  }
+
+  closeField(sid: string) {
+    if (!this.fields.delete(sid)) return;
+    void this.port.call('inputClose', { sid }).catch(() => {});
+  }
+
+  /** After a worker restart its relay state is gone: re-open every live field. */
+  private reopenFields() {
+    for (const [sid, f] of this.fields) {
+      void this.port.call('inputOpen', { sid, init: { ...f.init, value: f.current() } }).catch(() => {});
+    }
   }
 
   /** Pending drafts are kept per account: "<user>|<key>". */

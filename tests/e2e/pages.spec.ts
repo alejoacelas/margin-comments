@@ -39,8 +39,8 @@ test('selections across elements, inside lists and tables, overlapping, and very
   // Across list items (into the nested list).
   await selectBetween(a, 'see what you read.', 'Nested item');
   await a.locator('[data-testid=adder]').click();
-  await a.locator('[data-testid=composer-input]').fill('Crosses list items');
-  await a.locator('[data-testid=composer-input]').press('Enter');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('Crosses list items');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText('Crosses list items');
   // Inside a table, across cells.
   await createThread(a, '2020Social highlights', 'Crosses table cells');
@@ -129,7 +129,7 @@ test("typing in our UI never triggers the page's shortcuts, and page handlers ca
   });
   await selectText(a, 'binds single-letter shortcuts like j and k');
   await a.locator('[data-testid=adder]').click();
-  const input = a.locator('[data-testid=composer-input]');
+  const input = a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
   await input.click();
   await input.pressSequentially('jjj kkk');
   await expect(input).toHaveValue('jjj kkk');

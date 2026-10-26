@@ -152,7 +152,9 @@ textarea:focus, input:focus { outline: none; border-color: #9ec9ff; }
 .sidebar .signin { padding: 8px 20px 16px; }
 .signin h3 { font: 600 14px var(--mc-font-ui); margin: 0 0 4px; color: #000; }
 .signin p { font-size: 13px; color: var(--mc-muted); margin: 0 0 10px; }
-.signin form { display: flex; flex-direction: column; gap: 8px; }
+.signin form, .signin .form { display: flex; flex-direction: column; gap: 8px; }
+/* Text fields live in extension-origin frames (see SecureField). */
+.field-frame { display: block; width: 100%; border: 0; margin: 0; padding: 0; background: transparent; color-scheme: light; overflow: hidden; }
 .code-input { letter-spacing: 4px; font-size: 18px !important; text-align: center; }
 .or { text-align: center; font-size: 12px; color: var(--mc-faint); margin: 10px 0; }
 

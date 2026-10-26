@@ -4,8 +4,8 @@ import type { Draft, Op } from '../../messages';
 import { hueIndexFor, OTHER_HUES } from '../highlights';
 import { isMine, type State, type Store, useStore, viewThreads, type ViewThread } from '../store';
 import type { Actions, AnchorBox } from './actions';
-import { Composer, ReloadToEdit, ThreadView } from './thread';
-import { Avatar, Icons, Layer, timeAgo } from './util';
+import { Composer, ThreadView } from './thread';
+import { Avatar, Icons, Layer, SecureField, timeAgo } from './util';
 
 const CARD_WIDTH = 248;
 const SIDEBAR_WIDTH = 320;
@@ -64,23 +64,23 @@ function Card(props: { box: AnchorBox | null; sidebarOpen: boolean; children: pr
 }
 
 function SignIn({ state, actions, compact }: { state: State; actions: Actions; compact?: boolean }) {
-  if (state.ui.editingBlocked) {
-    return (
-      <div class="signin" data-testid="signin">
-        <h3>Sign in to comment</h3>
-        <ReloadToEdit />
-      </div>
-    );
-  }
-  return <SignInForm state={state} actions={actions} compact={compact} />;
-}
-
-function SignInForm({ state, actions, compact }: { state: State; actions: Actions; compact?: boolean }) {
   const [email, setEmail] = useState('');
   const [request, setRequest] = useState<{ requestId: string; email: string; emailMode: string } | null>(null);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const sendEmail = () => {
+    if (busy || !email.trim()) return;
+    void run(async () => {
+      const r = await actions.startEmail(email);
+      setRequest({ ...r, email });
+    });
+  };
+  const verify = () => {
+    if (busy || !request || code.replace(/\D/g, '').length !== 6) return;
+    void run(() => actions.verifyCode(request.requestId, code));
+  };
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -100,28 +100,21 @@ function SignInForm({ state, actions, compact }: { state: State; actions: Action
       {!request ? (
         <>
           <p>We'll email you a sign-in link and code.</p>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              void run(async () => {
-                const r = await actions.startEmail(email);
-                setRequest({ ...r, email });
-              });
-            }}
-          >
-            <input
-              type="email"
-              required
-              placeholder="you@example.com"
+          <div class="form">
+            <SecureField
+              kind="email"
               value={email}
-              aria-label="Email address"
-              data-testid="signin-email"
-              onInput={e => setEmail((e.currentTarget as HTMLInputElement).value)}
+              placeholder="you@example.com"
+              label="Email address"
+              testId="signin-email"
+              actions={actions}
+              onChange={setEmail}
+              onSubmit={() => sendEmail()}
             />
-            <button class="primary-btn" type="submit" disabled={busy || !email.trim()} data-testid="signin-send">
+            <button class="primary-btn" disabled={busy || !email.trim()} data-testid="signin-send" onClick={() => sendEmail()}>
               {busy ? 'Sending…' : 'Email me a link'}
             </button>
-          </form>
+          </div>
           {state.config?.googleEnabled ? (
             <>
               <div class="or">or</div>
@@ -136,28 +129,23 @@ function SignInForm({ state, actions, compact }: { state: State; actions: Action
           <p>
             We sent a link and a 6-digit code to <strong>{request.email}</strong>. Open the link here in Chrome, or enter the code.
           </p>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              void run(() => actions.verifyCode(request.requestId, code));
-            }}
-          >
-            <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              class="code-input"
+          <div class="form">
+            <SecureField
+              kind="code"
+              value={code}
               maxLength={7}
               placeholder="123456"
-              value={code}
-              aria-label="Sign-in code"
-              data-testid="signin-code"
-              onInput={e => setCode((e.currentTarget as HTMLInputElement).value)}
+              label="Sign-in code"
+              testId="signin-code"
+              autoFocus
+              actions={actions}
+              onChange={setCode}
+              onSubmit={() => verify()}
             />
-            <button class="primary-btn" type="submit" disabled={busy || code.replace(/\D/g, '').length !== 6} data-testid="signin-verify">
+            <button class="primary-btn" disabled={busy || code.replace(/\D/g, '').length !== 6} data-testid="signin-verify" onClick={() => verify()}>
               {busy ? 'Checking…' : 'Sign in'}
             </button>
-          </form>
+          </div>
           {request.emailMode === 'outbox' ? (
             <div class="hint">
               This server isn't sending real email yet. Its admin can see your code in the{' '}
@@ -190,7 +178,7 @@ function SignInForm({ state, actions, compact }: { state: State; actions: Action
   );
 }
 
-function Account({ user, actions, blocked }: { user: Me; actions: Actions; blocked?: boolean }) {
+function Account({ user, actions }: { user: Me; actions: Actions }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.name);
   return (
@@ -198,15 +186,21 @@ function Account({ user, actions, blocked }: { user: Me; actions: Actions; block
       <div class="me">
         <Avatar name={user.name} own />
         <div class="who">
-          {editing && !blocked ? (
-            <form
-              onSubmit={e => {
-                e.preventDefault();
-                if (name.trim()) void actions.updateMe({ name: name.trim() }).then(() => setEditing(false));
+          {editing ? (
+            <SecureField
+              kind="text"
+              value={name}
+              maxLength={80}
+              placeholder="Your name"
+              label="Display name"
+              autoFocus
+              actions={actions}
+              onChange={setName}
+              onSubmit={v => {
+                if (v.trim()) void actions.updateMe({ name: v.trim() }).then(() => setEditing(false));
               }}
-            >
-              <input type="text" value={name} maxLength={80} aria-label="Display name" onInput={e => setName((e.currentTarget as HTMLInputElement).value)} />
-            </form>
+              onEscape={() => setEditing(false)}
+            />
           ) : (
             <div class="n" title="Click to change your display name" style={{ cursor: 'pointer' }} onClick={() => setEditing(true)}>
               {user.name}
@@ -257,7 +251,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
       {props.selected ? (
         <div class="thread-inline" onClick={e => e.stopPropagation()}>
           {props.orphan ? <div class="hint" style={{ padding: '0 6px 4px' }}>The highlighted text can't be found on this page anymore.</div> : null}
-          <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader editingBlocked={state.ui.editingBlocked} />
+          <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </div>
       ) : first ? (
         <div class="row-first">{first.body}</div>
@@ -451,7 +445,7 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
               {state.ops.some(o => o.status === 'pending') ? 'Offline. Your changes are saved and will sync when you reconnect.' : 'Offline. Reconnecting…'}
             </div>
           ) : null}
-          <Account user={state.user} actions={actions} blocked={state.ui.editingBlocked} />
+          <Account user={state.user} actions={actions} />
         </div>
       ) : null}
     </Layer>
@@ -514,7 +508,6 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
               drafts={state.drafts}
               actions={actions}
               initialText={ui.composer.initialText}
-              blocked={ui.editingBlocked}
             />
           ) : (
             <>
@@ -532,7 +525,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       {showActiveCard && active ? (
         <Card box={actions.anchorBox(active.id)} sidebarOpen={ui.sidebarOpen} testId="thread-card">
           {/* Keyed by thread: switching threads must never carry editor state over. */}
-          <ThreadView key={active.id} thread={active} user={state.user} drafts={state.drafts} actions={actions} showHeader editingBlocked={ui.editingBlocked} />
+          <ThreadView key={active.id} thread={active} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </Card>
       ) : null}
 

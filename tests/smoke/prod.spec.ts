@@ -45,9 +45,9 @@ async function signIn(context: import('@playwright/test').BrowserContext, page: 
     const tabs = await chrome.tabs.query({});
     await (globalThis as any).__marginTest.onActionClicked(tabs.find(t => t.url === u && t.active) ?? tabs.find(t => t.url === u));
   }, page.url());
-  await page.locator('[data-testid=signin-email]').fill(email);
+  await page.frameLocator('iframe[data-testid=signin-email-frame]').locator('[data-testid=signin-email]').fill(email);
   await page.locator('[data-testid=signin-send]').click();
-  await page.locator('[data-testid=signin-code]').fill(await codeFor(email));
+  await page.frameLocator('iframe[data-testid=signin-code-frame]').locator('[data-testid=signin-code]').fill(await codeFor(email));
   await page.locator('[data-testid=signin-verify]').click();
   await expect(page.locator('[data-testid=signout]')).toBeVisible();
   await page.locator('[data-testid=sidebar-close]').click();
@@ -76,8 +76,8 @@ test('production: sign in, comment, see it live in a second browser, clean up', 
     });
     await pa.locator('[data-testid=adder]').click();
     const body = `Smoke test ${stamp}`;
-    await pa.locator('[data-testid=composer-input]').fill(body);
-    await pa.locator('[data-testid=composer-input]').press('Enter');
+    await pa.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill(body);
+    await pa.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
     await expect(pa.locator('[data-testid=thread-card]').getByText('Saving…')).toHaveCount(0, { timeout: 15_000 });
 
     // Live in the second browser.
@@ -149,8 +149,8 @@ test('production: comment on real sites without breaking them', async () => {
       });
       expect(ok, `selectable text on ${url}`).toBe(true);
       await page.locator('[data-testid=adder]').click();
-      await page.locator('[data-testid=composer-input]').fill(`Smoke on ${url}`);
-      await page.locator('[data-testid=composer-input]').press('Enter');
+      await page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill(`Smoke on ${url}`);
+      await page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
       await expect(page.locator('[data-testid=thread-card]').getByText('Saving…')).toHaveCount(0, { timeout: 15_000 });
       const painted = await page.evaluate(() => [...(CSS as any).highlights.entries()].some(([n, h]: any) => n.startsWith('mc-') && h.size));
       expect(painted, `highlight on ${url}`).toBe(true);

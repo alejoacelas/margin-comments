@@ -17,16 +17,16 @@ test('create, reply, edit, delete and resolve a thread; reload re-anchors it', a
   await expect(card.getByText('Saving…')).toHaveCount(0);
 
   // Reply.
-  await card.locator('[data-testid=reply-input]').fill('A reply to myself');
-  await card.locator('[data-testid=reply-input]').press('Enter');
+  await card.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('A reply to myself');
+  await card.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').press('Enter');
   await expect(card.locator('[data-testid=comment-body]')).toHaveText(['First thought on marginalia', 'A reply to myself']);
 
   // Edit the reply.
   const reply = card.locator('[data-testid=comment]').nth(1);
   await reply.hover();
   await reply.locator('[data-testid=edit]').click();
-  await reply.locator('[data-testid=edit-input]').fill('An edited reply');
-  await reply.locator('[data-testid=edit-input]').press('Enter');
+  await reply.frameLocator('iframe[data-testid=edit-input-frame]').locator('[data-testid=edit-input]').fill('An edited reply');
+  await reply.frameLocator('iframe[data-testid=edit-input-frame]').locator('[data-testid=edit-input]').press('Enter');
   await expect(card.locator('[data-testid=comment-body]')).toHaveText(['First thought on marginalia', 'An edited reply']);
   await expect(reply.locator('.c-time')).toContainText('edited');
 

@@ -159,3 +159,17 @@ get in, not that the user still could; production-mode tests now exercise real i
 | B1 | Email replies over 10,000 characters were truncated | Fixed | Posted in full as consecutive comments (deterministic ids, idempotent). `email.test.ts` long-reply case |
 | C1 | In tabs the extension is injected into after install/update, page listeners registered before our shield can see keystrokes typed in our editors | Fixed | Late-injected instances (shield registered after `document_start`) show threads but disable editors and sign-in with "Reload the page to write comments". Not covered by e2e: Playwright can't install an extension into an already-loaded page |
 | C2 | Submitting in one tab deleted another open tab's draft whose text was a prefix of the submission | Fixed | Open tabs' drafts are only consumed on an exact text match. e2e "submitting in one tab doesn't delete another open tab's shorter draft" |
+
+## Round 10 — full repository (2026-10-26)
+
+Reviewer B found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **The closed shadow root doesn't hide typed text: with focus in our textarea, `document.execCommand('selectAll'); getSelection().toString()` in the page returned the whole draft** | Fixed | Every text field moved into an extension-origin iframe (`input.html`) relayed through the worker; the page can neither read it nor see keystrokes. This also covers round 9's C1 properly, so the "reload to write comments" block on late-injected tabs is gone. e2e "the production build … works with real mouse and keyboard input" now also has a nosy page log keys and try `selectAll`/ranges/`frames[0]` |
+| A2 | The late-injection block could be bypassed by restoring a draft | Moot | The block was removed (see A1) |
+| C1 | Submitting an older draft via "Continue" deleted the tab's own newer, different draft | Fixed | The tab's own draft is consumed only if the sent text contains it. e2e "submitting in one tab doesn't delete another open tab's shorter draft" and the Continue test |
+
+Found while moving fields into frames (with tests): a field rendered where another had been
+(sign-in email → code) reused the iframe with only a new `#hash`, which doesn't reload it; and a
+render lagging a keystroke pushed the older value back into the field, dropping characters.

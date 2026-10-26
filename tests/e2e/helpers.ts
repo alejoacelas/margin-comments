@@ -104,12 +104,12 @@ export class Person {
   async signIn(page: Page) {
     await this.openSidebar(page);
     const since = Date.now();
-    await page.locator('[data-testid=signin-email]').fill(this.email);
+    await page.frameLocator('iframe[data-testid=signin-email-frame]').locator('[data-testid=signin-email]').fill(this.email);
     await page.locator('[data-testid=signin-send]').click();
-    await expect(page.locator('[data-testid=signin-code]')).toBeVisible();
+    await expect(page.frameLocator('iframe[data-testid=signin-code-frame]').locator('[data-testid=signin-code]')).toBeVisible();
     const mail = await waitForEmail(this.email, m => /sign-in code/.test(m.subject), since);
     const code = /(\d{6})/.exec(mail.subject)![1];
-    await page.locator('[data-testid=signin-code]').fill(code);
+    await page.frameLocator('iframe[data-testid=signin-code-frame]').locator('[data-testid=signin-code]').fill(code);
     await page.locator('[data-testid=signin-verify]').click();
     await expect(page.locator('[data-testid=signout]')).toBeVisible();
     await closeSidebar(page);
@@ -252,7 +252,7 @@ export async function selectBetween(page: Page, from: string, to: string) {
 export async function createThread(page: Page, text: string, body: string, occurrence = 0) {
   await selectText(page, text, occurrence);
   await page.locator('[data-testid=adder]').click();
-  const input = page.locator('[data-testid=composer-input]');
+  const input = page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
   await expect(input).toBeVisible();
   await input.fill(body);
   await input.press('Enter');

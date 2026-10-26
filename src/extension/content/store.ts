@@ -39,8 +39,6 @@ export type UiState = {
   /** Bumped to force re-positioning on scroll/resize. */
   layoutTick: number;
   toast: string | null;
-  /** Editors disabled until reload (the extension was injected into a loaded page). */
-  editingBlocked: boolean;
 };
 
 export type State = {

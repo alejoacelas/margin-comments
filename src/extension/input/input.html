@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Margin Comments input</title>
+    <style>
+      @font-face { font-family: 'MC Source Sans'; src: url('fonts/source-sans-3-400.woff2') format('woff2'); font-weight: 400; }
+      html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+      textarea, input {
+        display: block; box-sizing: border-box; width: 100%; margin: 0;
+        font: 12px/1.4 verdana, 'MC Source Sans', sans-serif; color: rgb(33, 37, 41); background: #fff;
+        border: 1px solid #ccc; border-radius: 4px; padding: 5px 6px; resize: none; overflow: auto;
+      }
+      input { font-family: 'MC Source Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; padding: 6px 8px; }
+      input.code { letter-spacing: 4px; font-size: 18px; text-align: center; }
+      textarea::placeholder, input::placeholder { color: #a8a8a8; }
+      textarea:focus, input:focus { outline: none; border-color: #9ec9ff; }
+      textarea[readonly], input[readonly] { color: #808080; }
+    </style>
+  </head>
+  <body>
+    <script src="input.js"></script>
+  </body>
+</html>

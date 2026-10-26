@@ -42,6 +42,24 @@ export type Draft = {
 
 export type Connection = 'online' | 'connecting' | 'offline';
 
+/** A text field hosted in the extension-origin input frame (input.html). */
+export type InputInit = {
+  kind: 'textarea' | 'email' | 'text' | 'code';
+  value: string;
+  placeholder: string;
+  label: string;
+  rows?: number;
+  maxLength?: number;
+  testId?: string;
+};
+
+export type InputCommand = { cmd: 'set'; value: string } | { cmd: 'focus' } | { cmd: 'readonly'; on: boolean };
+
+export type InputEventType = 'ready' | 'input' | 'submit' | 'escape' | 'height';
+
+/** Frame -> worker. */
+export type InputPortMessage = { t: 'hello'; sid: string } | { t: 'event'; sid: string; type: InputEventType; value: string };
+
 export type RpcMethods = {
   startEmail: { params: { email: string }; result: { requestId: string; emailMode: string } };
   verifyCode: { params: { requestId: string; code: string }; result: { user: Me } };
@@ -59,6 +77,9 @@ export type RpcMethods = {
   /** Delete this tab's draft for `key`, and/or the user's drafts for `key` with exactly these texts. */
   deleteDraft: { params: { key: string; instanceId?: string; texts?: string[] }; result: { ok: true } };
   refresh: { params: Record<string, never>; result: { ok: true } };
+  inputOpen: { params: { sid: string; init: InputInit }; result: { ok: true } };
+  inputCommand: { params: { sid: string; cmd: InputCommand }; result: { ok: true } };
+  inputClose: { params: { sid: string }; result: { ok: true } };
 };
 
 export type RpcMethod = keyof RpcMethods;
@@ -81,6 +102,7 @@ export type ToContent =
   | { t: 'threads'; threads: Thread[]; loaded: boolean; error?: string }
   | { t: 'thread'; thread: Thread }
   | { t: 'thread-deleted'; id: string }
-  | { t: 'toggle-sidebar' };
+  | { t: 'toggle-sidebar' }
+  | { t: 'input-event'; sid: string; type: InputEventType; value: string };
 
 export const PORT_NAME = 'margin-comments';

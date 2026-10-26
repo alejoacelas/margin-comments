@@ -25,8 +25,8 @@ test('a second user sees threads, replies, edits, resolves and deletes live', as
 
   // Bob replies; Alice sees it live in her open card.
   await row.click();
-  await row.locator('[data-testid=reply-input]').fill('Bob replies live');
-  await row.locator('[data-testid=reply-input]').press('Enter');
+  await row.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('Bob replies live');
+  await row.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').press('Enter');
   const aliceCard = a.locator('[data-testid=thread-card]');
   await expect(aliceCard.locator('[data-testid=comment-body]')).toHaveText(['Alice starts a thread', 'Bob replies live']);
 
@@ -34,8 +34,8 @@ test('a second user sees threads, replies, edits, resolves and deletes live', as
   const first = aliceCard.locator('[data-testid=comment]').first();
   await first.hover();
   await first.locator('[data-testid=edit]').click();
-  await first.locator('[data-testid=edit-input]').fill('Alice edited her thread');
-  await first.locator('[data-testid=edit-input]').press('Enter');
+  await first.frameLocator('iframe[data-testid=edit-input-frame]').locator('[data-testid=edit-input]').fill('Alice edited her thread');
+  await first.frameLocator('iframe[data-testid=edit-input-frame]').locator('[data-testid=edit-input]').press('Enter');
   await expect(row.locator('[data-testid=comment-body]').first()).toHaveText('Alice edited her thread');
 
   // Bob can't edit or delete Alice's comment.
@@ -73,8 +73,8 @@ test('reply notifications are emailed, and replying to the email posts into the 
   await bob.openSidebar(b);
   const row = b.locator('[data-testid=sidebar-thread]');
   await row.click();
-  await row.locator('[data-testid=reply-input]').fill('Yes, and it is open source.');
-  await row.locator('[data-testid=reply-input]').press('Enter');
+  await row.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('Yes, and it is open source.');
+  await row.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').press('Enter');
 
   const mail = await waitForEmail(alice.email, m => m.subject.includes('Open annotation standard'));
   expect(mail.text).toContain('Open annotation standard'); // the anchored quote
@@ -153,7 +153,7 @@ test('signing in by opening the emailed link', async ({ alice }) => {
   const page = await alice.open(path);
   await alice.openSidebar(page);
   const since = Date.now();
-  await page.locator('[data-testid=signin-email]').fill(alice.email);
+  await page.frameLocator('iframe[data-testid=signin-email-frame]').locator('[data-testid=signin-email]').fill(alice.email);
   await page.locator('[data-testid=signin-send]').click();
   const mail = await waitForEmail(alice.email, m => /sign-in code/.test(m.subject), since);
   const link = /(http:\/\/localhost:\d+\/auth\/verify#token=[\w-]+)/.exec(mail.text)![1];

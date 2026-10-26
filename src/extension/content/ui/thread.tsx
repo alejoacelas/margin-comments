@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useRef, useState } from 'preact/hooks';
 import type { Me } from '../../../shared/types';
 import { LIMITS } from '../../../shared/types';
 import type { Draft, Op } from '../../messages';
 import type { ViewComment, ViewThread } from '../store';
 import { isMine } from '../store';
 import type { Actions } from './actions';
-import { autosize, Icons, isSubmitKey, Linkified, newId, timeAgo } from './util';
+import { Icons, Linkified, newId, SecureField, timeAgo } from './util';
 
 function OpStatus({ op, text, actions }: { op?: Op; text?: string; actions: Actions }) {
   if (!op) return null;
@@ -45,19 +45,11 @@ function Editor(props: {
   const [text, setText] = useState(props.initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const ref = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    autosize(ref.current);
-    if (props.autoFocus) {
-      ref.current?.focus({ preventScroll: true });
-      const len = ref.current?.value.length ?? 0;
-      ref.current?.setSelectionRange(len, len);
-    }
-  }, []);
+  const textRef = useRef(text);
+  textRef.current = text;
 
   const submit = async () => {
-    const body = text.trim();
+    const body = textRef.current.trim();
     if (!body || busy) return;
     if (body.length > LIMITS.commentBody) {
       setError(`Too long (max ${LIMITS.commentBody.toLocaleString()} characters).`);
@@ -78,29 +70,24 @@ function Editor(props: {
 
   return (
     <div>
-      <textarea
-        ref={ref}
+      <SecureField
+        kind="textarea"
         rows={props.pill ? 1 : 3}
         value={text}
         readOnly={busy}
         placeholder={props.placeholder}
-        data-testid={props.testId}
-        aria-label={props.placeholder}
-        onInput={e => {
-          const v = (e.currentTarget as HTMLTextAreaElement).value;
+        label={props.placeholder}
+        testId={props.testId}
+        autoFocus={props.autoFocus}
+        actions={props.actions}
+        onChange={v => {
           setText(v);
-          autosize(ref.current);
           props.actions.saveDraft(props.draftKey, v);
         }}
-        onKeyDown={e => {
-          if (isSubmitKey(e) || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) {
-            e.preventDefault();
-            void submit();
-          } else if (e.key === 'Escape') {
-            e.preventDefault();
-            if (props.onEscape) props.onEscape();
-            else props.onCancel([props.initial, text]);
-          }
+        onSubmit={() => void submit()}
+        onEscape={v => {
+          if (props.onEscape) props.onEscape();
+          else props.onCancel([props.initial, v]);
         }}
       />
       {error ? <div class="error">{error}</div> : null}
@@ -262,7 +249,6 @@ export function ThreadView(props: {
   drafts: Draft[];
   actions: Actions;
   showHeader: boolean;
-  editingBlocked?: boolean;
 }) {
   const { thread, user, actions } = props;
   const own = isMine(thread, user);
@@ -295,29 +281,14 @@ export function ThreadView(props: {
         </div>
       ) : null}
       {thread.comments.map((c, i) => (
-        <CommentItem key={c.id} thread={thread} comment={c} isFirst={i === 0} user={props.editingBlocked ? null : user} drafts={props.drafts} actions={actions} />
+        <CommentItem key={c.id} thread={thread} comment={c} isFirst={i === 0} user={user} drafts={props.drafts} actions={actions} />
       ))}
-      {user ? (
-        props.editingBlocked ? (
-          <ReloadToEdit />
-        ) : (
-          <ReplyBox key={thread.id} thread={thread} drafts={props.drafts} actions={actions} />
-        )
-      ) : null}
+      {user ? <ReplyBox key={thread.id} thread={thread} drafts={props.drafts} actions={actions} /> : null}
     </div>
   );
 }
 
-export function ReloadToEdit() {
-  return (
-    <div class="hint" style={{ padding: '6px 8px' }} data-testid="reload-to-edit">
-      Margin Comments was installed or updated after this page loaded. Reload the page to write comments here.
-    </div>
-  );
-}
-
-export function Composer(props: { quote: string; draftKey: string; drafts: Draft[]; actions: Actions; initialText?: string; blocked?: boolean }) {
-  if (props.blocked) return <ReloadToEdit />;
+export function Composer(props: { quote: string; draftKey: string; drafts: Draft[]; actions: Actions; initialText?: string }) {
   return (
     <div class="composer" data-testid="composer">
       <Editor

@@ -1,4 +1,4 @@
-import type { Draft } from '../../messages';
+import type { Draft, InputCommand, InputEventType, InputInit } from '../../messages';
 import type { ViewThread } from '../store';
 
 /** Viewport geometry of a highlight: its line boxes and its text column's right edge. */
@@ -38,4 +38,10 @@ export interface Actions {
   draftBox(): AnchorBox | null;
   isOrphan(threadId: string): boolean;
   apiUrl: string;
+
+  /** Secure text fields (extension-origin frames). */
+  inputUrl: string;
+  openField(sid: string, init: InputInit, onEvent: (type: InputEventType, value: string) => void, currentValue: () => string): void;
+  fieldCommand(sid: string, cmd: InputCommand): void;
+  closeField(sid: string): void;
 }

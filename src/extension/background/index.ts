@@ -4,7 +4,7 @@
  * long-lived ports; it never runs page code.
  */
 import type { Me, ServerConfig, Thread } from '../../shared/types';
-import type { Connection, Draft, NewOp, Op, RpcMethod, RpcMethods, ToBackground, ToContent } from '../messages';
+import type { Connection, Draft, InputCommand, InputInit, InputPortMessage, NewOp, Op, RpcMethod, RpcMethods, ToBackground, ToContent } from '../messages';
 import { PORT_NAME } from '../messages';
 import { api, API_URL, RequestError, TransientError, WS_URL } from './api';
 
@@ -226,6 +226,65 @@ async function loadThreads(info: PortInfo) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Secure input frames: relay between a content script and its input.html frames
+// ---------------------------------------------------------------------------
+
+type InputSession = { owner: PortInfo; init: InputInit; frame: chrome.runtime.Port | null; queued: InputCommand[] };
+const inputSessions = new Map<string, InputSession>();
+/** Frames that said hello before their content script opened the session. */
+const waitingFrames = new Map<string, chrome.runtime.Port>();
+const INPUT_PAGE = chrome.runtime.getURL('input.html');
+
+function attachFrame(sid: string, frame: chrome.runtime.Port) {
+  const session = inputSessions.get(sid);
+  if (!session) {
+    waitingFrames.set(sid, frame);
+    return;
+  }
+  waitingFrames.delete(sid);
+  session.frame = frame;
+  frame.postMessage({ t: 'init', init: session.init });
+  for (const cmd of session.queued.splice(0)) frame.postMessage({ t: 'cmd', cmd });
+}
+
+function closeInputs(owner: PortInfo) {
+  for (const [sid, session] of inputSessions) {
+    if (session.owner !== owner) continue;
+    inputSessions.delete(sid);
+    try {
+      session.frame?.disconnect();
+    } catch {
+      // gone already
+    }
+  }
+}
+
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name !== 'mc-input') return;
+  // Only our own input page may act as a field.
+  if (!port.sender?.url?.startsWith(INPUT_PAGE)) {
+    port.disconnect();
+    return;
+  }
+  let sid: string | null = null;
+  port.onMessage.addListener((msg: InputPortMessage) => {
+    if (msg.t === 'hello' && typeof msg.sid === 'string' && !sid) {
+      sid = msg.sid;
+      attachFrame(sid, port);
+    } else if (msg.t === 'event' && sid && msg.sid === sid) {
+      const session = inputSessions.get(sid);
+      if (session && session.frame === port) post(session.owner, { t: 'input-event', sid, type: msg.type, value: String(msg.value ?? '') });
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    if (!sid) return;
+    if (waitingFrames.get(sid) === port) waitingFrames.delete(sid);
+    const session = inputSessions.get(sid);
+    if (session?.frame === port) session.frame = null;
+  });
+});
+
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== PORT_NAME) return;
   const info: PortInfo = {
@@ -245,6 +304,7 @@ chrome.runtime.onConnect.addListener(port => {
   });
   port.onDisconnect.addListener(() => {
     ports.delete(info);
+    closeInputs(info);
     syncSubscriptions();
   });
 });
@@ -349,8 +409,12 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     // (e.g. one this editor restored and extended); diverging drafts from
     // other tabs stay.
     if (draftKey && draftInstance) {
+      // This tab's draft goes only if it's what was sent (or contained in
+      // it): after "Continue" on an older draft, the tab's own newer draft
+      // with different text must survive.
       const own = draftSlot(draftKey, draftInstance);
-      if (own) delete drafts[own];
+      const ownText = own && drafts[own] ? normalizedText(drafts[own].text) : null;
+      if (own && ownText !== null && (draftText === undefined || normalizedText(draftText).startsWith(ownText))) delete drafts[own];
     }
     // Closed tabs' drafts contained in the submission are consumed; an open
     // tab's draft only if it's exactly the submitted text.
@@ -420,6 +484,32 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     if (changed) {
       await persist(['drafts']);
       broadcastState();
+    }
+    return { ok: true as const };
+  },
+  async inputOpen({ sid, init }, info) {
+    if (typeof sid !== 'string' || sid.length < 16) throw new Error('bad session');
+    inputSessions.set(sid, { owner: info, init, frame: null, queued: [] });
+    const frame = waitingFrames.get(sid);
+    if (frame) attachFrame(sid, frame);
+    return { ok: true as const };
+  },
+  async inputCommand({ sid, cmd }, info) {
+    const session = inputSessions.get(sid);
+    if (!session || session.owner !== info) return { ok: true as const };
+    if (session.frame) session.frame.postMessage({ t: 'cmd', cmd });
+    else session.queued.push(cmd);
+    return { ok: true as const };
+  },
+  async inputClose({ sid }, info) {
+    const session = inputSessions.get(sid);
+    if (session && session.owner === info) {
+      inputSessions.delete(sid);
+      try {
+        session.frame?.disconnect();
+      } catch {
+        // gone already
+      }
     }
     return { ok: true as const };
   },

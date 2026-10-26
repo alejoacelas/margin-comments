@@ -12,9 +12,9 @@ test('capture UI screenshots', async ({ alice, bob }) => {
   await expect(page.locator('[data-testid=adder]')).toBeVisible();
   await page.screenshot({ path: 'test-results/screens/1-adder.png' });
   await page.locator('[data-testid=adder]').click();
-  await page.locator('[data-testid=composer-input]').fill('Margins are where the real reading happens.');
+  await page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('Margins are where the real reading happens.');
   await page.screenshot({ path: 'test-results/screens/2-composer.png' });
-  await page.locator('[data-testid=composer-input]').press('Enter');
+  await page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
   await expect(page.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveCount(1);
 
   const bobPage = await bob.open(path);
@@ -22,8 +22,8 @@ test('capture UI screenshots', async ({ alice, bob }) => {
   await createThread(bobPage, 'scribes added glosses that explained difficult passages', 'Glosses were the first hyperlinks.');
   await bobPage.keyboard.press('Escape');
   await expect(page.locator('[data-testid=launcher]')).toBeVisible();
-  await page.locator('[data-testid=thread-card] [data-testid=reply-input]').fill('Agreed, and they still are.');
-  await page.locator('[data-testid=thread-card] [data-testid=reply-input]').press('Enter');
+  await page.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('Agreed, and they still are.');
+  await page.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').press('Enter');
   await page.screenshot({ path: 'test-results/screens/3-thread.png' });
   await page.keyboard.press('Escape');
   await alice.openSidebar(page);

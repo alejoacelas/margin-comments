@@ -44,6 +44,9 @@ const common = {
 await build({ ...common, entryPoints: [join(root, 'src/extension/background/index.ts')], outfile: join(outDir, 'background.js'), format: 'esm' });
 await build({ ...common, entryPoints: [join(root, 'src/extension/content/early.ts')], outfile: join(outDir, 'early.js'), format: 'iife' });
 await build({ ...common, entryPoints: [join(root, 'src/extension/content/index.tsx')], outfile: join(outDir, 'content.js'), format: 'iife' });
+// Text fields run in this extension-origin page, framed by the content UI.
+await build({ ...common, entryPoints: [join(root, 'src/extension/input/input.ts')], outfile: join(outDir, 'input.js'), format: 'iife' });
+copyFileSync(join(root, 'src/extension/input/input.html'), join(outDir, 'input.html'));
 
 // Highlight styles (CSS Custom Highlight API). Names must match highlights.ts.
 const HUES = [0, 22, 95, 125, 155, 180, 200, 222, 250, 278, 305, 335];
@@ -95,7 +98,7 @@ const manifest = {
     { matches: ['http://*/*', 'https://*/*'], js: ['early.js'], run_at: 'document_start', all_frames: false },
     { matches: ['http://*/*', 'https://*/*'], js: ['content.js'], css: ['highlights.css'], run_at: 'document_idle', all_frames: false },
   ],
-  web_accessible_resources: [{ resources: ['fonts/*.woff2'], matches: ['http://*/*', 'https://*/*'] }],
+  web_accessible_resources: [{ resources: ['fonts/*.woff2', 'input.html'], matches: ['http://*/*', 'https://*/*'] }],
 };
 writeFileSync(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 

@@ -1,5 +1,7 @@
 import type { ComponentChildren } from 'preact';
-import { useLayoutEffect, useRef } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { InputInit } from '../../messages';
+import type { Actions } from './actions';
 import { hueIndexFor, OTHER_HUES } from '../highlights';
 
 export function timeAgo(iso: string, now = Date.now()): string {
@@ -153,4 +155,105 @@ export function isSubmitKey(e: KeyboardEvent): boolean {
 
 export function newId(): string {
   return crypto.randomUUID();
+}
+
+/**
+ * A text field that lives in an extension-origin iframe (input.html), so the
+ * host page can't read what's typed (not even through its Selection API) or
+ * see the keystrokes. Behaves like a controlled input: `value` in,
+ * `onChange` out.
+ */
+export function SecureField(props: {
+  kind: InputInit['kind'];
+  value: string;
+  onChange: (value: string) => void;
+  onSubmit?: (value: string) => void;
+  onEscape?: (value: string) => void;
+  placeholder: string;
+  label: string;
+  rows?: number;
+  maxLength?: number;
+  autoFocus?: boolean;
+  readOnly?: boolean;
+  testId?: string;
+  actions: Actions;
+}) {
+  // A new session (and frame) per mount; if the page ever navigates our frame
+  // away, `generation` bumps and a fresh one replaces it. The key also covers
+  // a different field rendered in the same place (e.g. sign-in email -> code):
+  // reusing the iframe would only change its URL's hash, which doesn't reload it.
+  const [generation, setGeneration] = useState(0);
+  return <SecureFrame key={`${generation}:${props.kind}:${props.testId ?? ''}`} {...props} onHijack={() => setGeneration(g => g + 1)} />;
+}
+
+function SecureFrame(props: Parameters<typeof SecureField>[0] & { onHijack: () => void }) {
+  const sid = useMemo(() => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, ''), []);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const latest = useRef(props);
+  latest.current = props;
+  // Values the frame reported that our props may not have caught up with yet.
+  // A render can lag a keystroke behind; pushing that older value back would
+  // drop what was just typed, so only values we didn't get from the frame are sent.
+  const fromFrame = useRef<string[]>([props.value]);
+  const loads = useRef(0);
+  const [height, setHeight] = useState(props.kind === 'textarea' ? (props.rows ?? 3) * 17 + 12 : props.kind === 'code' ? 40 : 32);
+
+  useLayoutEffect(() => {
+    const p = latest.current;
+    p.actions.openField(
+      sid,
+      { kind: p.kind, value: p.value, placeholder: p.placeholder, label: p.label, rows: p.rows, maxLength: p.maxLength, testId: p.testId },
+      (type, value) => {
+        const cur = latest.current;
+        if (type === 'input') {
+          fromFrame.current.push(value);
+          if (fromFrame.current.length > 200) fromFrame.current.splice(0, 100);
+          cur.onChange(value);
+        } else if (type === 'submit') cur.onSubmit?.(value);
+        else if (type === 'escape') cur.onEscape?.(value);
+        else if (type === 'height') setHeight(Math.max(20, Number(value) || 0));
+        else if (type === 'ready') {
+          if (cur.readOnly) cur.actions.fieldCommand(sid, { cmd: 'readonly', on: true });
+          if (cur.autoFocus) {
+            frameRef.current?.focus();
+            cur.actions.fieldCommand(sid, { cmd: 'focus' });
+          }
+        }
+      },
+      () => latest.current.value,
+    );
+    return () => latest.current.actions.closeField(sid);
+  }, []);
+
+  // Value changes made by our UI (e.g. cleared after sending).
+  useEffect(() => {
+    const seen = fromFrame.current.lastIndexOf(props.value);
+    if (seen >= 0) {
+      fromFrame.current.splice(0, seen);
+    } else {
+      fromFrame.current = [props.value];
+      props.actions.fieldCommand(sid, { cmd: 'set', value: props.value });
+    }
+  }, [props.value]);
+  useEffect(() => {
+    props.actions.fieldCommand(sid, { cmd: 'readonly', on: !!props.readOnly });
+  }, [props.readOnly]);
+
+  return (
+    <iframe
+      key={sid}
+      ref={frameRef}
+      class="field-frame"
+      src={`${props.actions.inputUrl}#${sid}`}
+      title={props.label}
+      data-testid={props.testId ? `${props.testId}-frame` : undefined}
+      style={{ height: `${height}px` }}
+      onLoad={() => {
+        // Our input page never navigates itself: a second load means the page
+        // navigated the frame somewhere else. Replace it.
+        loads.current++;
+        if (loads.current > 1) props.onHijack();
+      }}
+    />
+  );
 }

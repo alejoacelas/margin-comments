@@ -10,14 +10,14 @@ test('checkboxes and forms in our UI activate exactly once', async ({ alice }) =
   const a = await alice.open(path);
   await alice.openSidebar(a);
   const before = (await (await fetch(`${FAKE}/_test/sent?to=${encodeURIComponent(alice.email)}`)).json()).length;
-  await a.locator('[data-testid=signin-email]').fill(alice.email);
+  await a.frameLocator('iframe[data-testid=signin-email-frame]').locator('[data-testid=signin-email]').fill(alice.email);
   await a.locator('[data-testid=signin-send]').click();
-  await expect(a.locator('[data-testid=signin-code]')).toBeVisible();
+  await expect(a.frameLocator('iframe[data-testid=signin-code-frame]').locator('[data-testid=signin-code]')).toBeVisible();
   await waitForEmail(alice.email, m => /sign-in code/.test(m.subject));
   await a.waitForTimeout(500);
   const after = (await (await fetch(`${FAKE}/_test/sent?to=${encodeURIComponent(alice.email)}`)).json()).length;
   expect(after - before).toBe(1);
-  await a.locator('[data-testid=signin-code]').fill('000000');
+  await a.frameLocator('iframe[data-testid=signin-code-frame]').locator('[data-testid=signin-code]').fill('000000');
   await a.locator('[data-testid=signin-verify]').click();
   await expect(a.locator('[data-testid=signin] .error')).toBeVisible();
   await closeSidebar(a);
@@ -42,16 +42,16 @@ test('switching threads never carries reply text over', async ({ alice }) => {
   const atA = await textCenter(a, 'Open annotation standard');
   await a.mouse.click(atA.x, atA.y);
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]').first()).toHaveText('Thread A');
-  await a.locator('[data-testid=thread-card] [data-testid=reply-input]').fill('Intended for A');
+  await a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('Intended for A');
   const atB = await textCenter(a, 'Social highlights for friends');
   await a.mouse.click(atB.x, atB.y);
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]').first()).toHaveText('Thread B');
-  await expect(a.locator('[data-testid=thread-card] [data-testid=reply-input]')).toHaveValue('');
+  await expect(a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveValue('');
   // A's text is still waiting in A.
   const againA = await textCenter(a, 'Open annotation standard');
   await a.mouse.click(againA.x, againA.y);
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]').first()).toHaveText('Thread A');
-  await expect(a.locator('[data-testid=thread-card] [data-testid=reply-input]')).toHaveValue('Intended for A');
+  await expect(a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveValue('Intended for A');
 });
 
 test('a thread anchors when its text appears once on an otherwise quiet page', async ({ alice, bob }) => {
@@ -92,8 +92,8 @@ test('selections spanning an inline script survive changes to the script', async
   await alice.signIn(a);
   await selectBetween(a, 'before the data island', 'and visible words');
   await a.locator('[data-testid=adder]').click();
-  await a.locator('[data-testid=composer-input]').fill('Spans a script');
-  await a.locator('[data-testid=composer-input]').press('Enter');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('Spans a script');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
   await alice.openSidebar(a);
   const row = a.locator('[data-testid=sidebar-thread]');
   await expect(row).toContainText('before the data island and visible words');
@@ -118,7 +118,7 @@ test('a reply draft stays recoverable when its thread is deleted', async ({ alic
   await alice.signIn(a);
   await alice.openSidebar(a);
   await a.locator('[data-testid=sidebar-thread]').click();
-  await a.locator('[data-testid=sidebar-thread] [data-testid=reply-input]').fill('A long reply I typed but did not send');
+  await a.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('A long reply I typed but did not send');
   await a.waitForTimeout(700);
   const head = b.locator('[data-testid=thread-card] [data-testid=comment]').first();
   await head.hover();
@@ -175,10 +175,10 @@ test("one account's unsent work never shows up for the next account on the same 
   await setNetwork(true);
   await selectText(a, 'Footer text for the fixture page');
   await a.locator('[data-testid=adder]').click();
-  await a.locator('[data-testid=composer-input]').fill("Alice's private unsent comment");
-  await a.locator('[data-testid=composer-input]').press('Enter');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill("Alice's private unsent comment");
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
   await expect(a.locator('[data-testid=thread-card]').getByText('Saving…')).toBeVisible();
-  await a.locator('[data-testid=thread-card] [data-testid=reply-input]').fill("Alice's half-typed reply");
+  await a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill("Alice's half-typed reply");
   await a.waitForTimeout(700);
   await setNetwork(false);
   await alice.openSidebar(a);
@@ -200,14 +200,14 @@ test('a thread selected in the sidebar has exactly one editor on the page', asyn
   await createThread(a, 'Open annotation standard', 'One editor please');
   await alice.openSidebar(a);
   await a.locator('[data-testid=sidebar-thread]').click();
-  await expect(a.locator('[data-testid=reply-input]')).toHaveCount(1);
+  await expect(a.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveCount(1);
   // Clicking the highlight with the sidebar open selects it there too.
   await closeSidebar(a);
   await alice.openSidebar(a);
   const at = await textCenter(a, 'Open annotation standard');
   await a.mouse.click(at.x, at.y);
   await expect(a.locator('[data-testid=sidebar-thread].selected')).toHaveCount(1);
-  await expect(a.locator('[data-testid=reply-input]')).toHaveCount(1);
+  await expect(a.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveCount(1);
 });
 
 test('labels, links and middle clicks in our UI work, even on a hostile page', async ({ alice }) => {
@@ -237,7 +237,7 @@ test('two quick replies are two comments', async ({ alice }) => {
   const a = await alice.open(path);
   await alice.signIn(a);
   await createThread(a, 'Open annotation standard', 'Start');
-  const input = a.locator('[data-testid=thread-card] [data-testid=reply-input]');
+  const input = a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]');
   await input.fill('Reply A');
   await input.press('Enter');
   await input.fill('Reply B');
@@ -276,7 +276,7 @@ test('reply drafts typed in two tabs both survive', async ({ alice }) => {
   const open = async (p: import('@playwright/test').Page) => {
     await alice.openSidebar(p);
     await p.locator('[data-testid=sidebar-thread]').click();
-    return p.locator('[data-testid=sidebar-thread] [data-testid=reply-input]');
+    return p.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]');
   };
   const one = await open(a);
   await one.fill('Reply typed in tab one');
@@ -313,7 +313,7 @@ test('restored drafts can be discarded, and cancelling never deletes a draft ano
   // A new-thread draft survives a closed tab and can then be discarded for good.
   await selectText(a, 'Social highlights for friends');
   await a.locator('[data-testid=adder]').click();
-  await a.locator('[data-testid=composer-input]').fill('Draft to discard');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('Draft to discard');
   await a.waitForTimeout(700);
   await a.close();
   a = await alice.open(path);
@@ -330,12 +330,12 @@ test('restored drafts can be discarded, and cancelling never deletes a draft ano
   await a.keyboard.press('Escape');
   await alice.openSidebar(a);
   await a.locator('[data-testid=sidebar-thread]').click();
-  await a.locator('[data-testid=sidebar-thread] [data-testid=reply-input]').fill('Original thought');
+  await a.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('Original thought');
   await a.waitForTimeout(700);
   const b = await alice.open(path);
   await alice.openSidebar(b);
   await b.locator('[data-testid=sidebar-thread]').click();
-  const boxB = b.locator('[data-testid=sidebar-thread] [data-testid=reply-input]');
+  const boxB = b.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]');
   await expect(boxB).toHaveValue('Original thought');
   await boxB.fill('Original thought, extended in tab B');
   await b.waitForTimeout(700);
@@ -346,14 +346,14 @@ test('restored drafts can be discarded, and cancelling never deletes a draft ano
   const c = await alice.open(path);
   await alice.openSidebar(c);
   await c.locator('[data-testid=sidebar-thread]').click();
-  await expect(c.locator('[data-testid=sidebar-thread] [data-testid=reply-input]')).toHaveValue('Original thought');
+  await expect(c.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveValue('Original thought');
   // Cancelling the restored draft here (no other tab open) discards it.
   await c.locator('[data-testid=sidebar-thread] .text-btn').getByText('Cancel').click();
   await c.waitForTimeout(300);
   await c.reload();
   await alice.openSidebar(c);
   await c.locator('[data-testid=sidebar-thread]').click();
-  await expect(c.locator('[data-testid=sidebar-thread] [data-testid=reply-input]')).toHaveValue('');
+  await expect(c.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveValue('');
 });
 
 test('clicking highlighted link text opens the thread without navigating', async ({ alice }) => {
@@ -398,8 +398,8 @@ test('a new thread shows up even if the sidebar is on the Resolved filter', asyn
   await a.locator('[data-testid=filter-resolved]').click();
   await selectText(a, 'Threads with email replies');
   await a.locator('[data-testid=adder]').click();
-  await a.locator('[data-testid=composer-input]').fill('Made while on Resolved');
-  await a.locator('[data-testid=composer-input]').press('Enter');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('Made while on Resolved');
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
   await expect(a.locator('[data-testid=sidebar-thread].selected')).toContainText('Made while on Resolved');
 });
 
@@ -439,6 +439,13 @@ test('the production build (closed shadow root) works with real mouse and keyboa
     const path = uniquePath('article');
     const p = await user.open(path);
     await expect.poll(() => p.evaluate(() => document.querySelector('margin-comments-root')?.shadowRoot === null)).toBe(true);
+    // A nosy page logs every key it can see.
+    await p.evaluate(() => {
+      const w = window as any;
+      w.__keys = '';
+      for (const type of ['keydown', 'keypress', 'input', 'beforeinput'])
+        window.addEventListener(type, (e: any) => (w.__keys += e.key ?? e.data ?? '?'), true);
+    });
     // Select text; the "Comment" chip appears 10px right of the selection, top-aligned.
     await selectText(p, 'Readers have always written in the margins');
     const chip = await p.evaluate(() => {
@@ -453,6 +460,23 @@ test('the production build (closed shadow root) works with real mouse and keyboa
     await p.waitForTimeout(800);
     const drafts = await user.sw.evaluate(async () => Object.values(((await chrome.storage.local.get('drafts')).drafts ?? {}) as Record<string, { text: string }>).map(d => d.text));
     expect(drafts).toContain('Typed into the production build');
+    // The page can't see the keystrokes, and can't read the draft through its
+    // own Selection API (the field lives in an extension-origin frame).
+    expect(await p.evaluate(() => (window as any).__keys)).toBe('');
+    const leaked = await p.evaluate(() => {
+      document.execCommand('selectAll');
+      const all = document.getSelection()!.toString();
+      const active = document.activeElement;
+      const range = document.createRange();
+      range.selectNodeContents(document.documentElement);
+      return { all, range: range.toString(), active: active?.tagName, frames: window.frames.length };
+    });
+    expect(leaked.all).not.toContain('Typed into');
+    expect(leaked.range).not.toContain('Typed into');
+    expect(await p.evaluate(() => { try { return (window.frames[0] as any).document.body.innerText; } catch { return 'blocked'; } })).toBe('blocked');
+    // Put focus back in the field (selectAll moved it) and send.
+    const field = p.frames().find(f => f.url().includes('/input.html'))!;
+    await field.locator('textarea').focus();
     await p.keyboard.press('Enter');
     await expect
       .poll(async () => {
@@ -518,7 +542,7 @@ test('Continue opens exactly the chosen draft when two share a selection', async
     const p = await alice.open(path);
     await selectText(p, 'Social highlights for friends');
     await p.locator('[data-testid=adder]').click();
-    const input = p.locator('[data-testid=composer-input]');
+    const input = p.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
     await expect(input).toBeFocused();
     await p.waitForTimeout(200); // the composer restores a saved draft and moves the caret
     await input.fill(text);
@@ -537,7 +561,7 @@ test('Continue opens exactly the chosen draft when two share a selection', async
   await alice.openSidebar(c);
   for (const text of ['First draft for this selection', 'Second draft for this selection']) {
     await c.locator('[data-testid=draft-row]').filter({ hasText: text }).getByRole('button', { name: 'Continue' }).click();
-    await expect(c.locator('[data-testid=composer-input]')).toHaveValue(text);
+    await expect(c.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]')).toHaveValue(text);
     await c.keyboard.press('Escape');
   }
 });
@@ -550,12 +574,12 @@ test("submitting in one tab doesn't delete another open tab's shorter draft", as
   await a.keyboard.press('Escape');
   await alice.openSidebar(a);
   await a.locator('[data-testid=sidebar-thread]').click();
-  await a.locator('[data-testid=sidebar-thread] [data-testid=reply-input]').fill('No');
+  await a.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('No');
   await a.waitForTimeout(700);
   const b = await alice.open(path);
   await alice.openSidebar(b);
   await b.locator('[data-testid=sidebar-thread]').click();
-  const boxB = b.locator('[data-testid=sidebar-thread] [data-testid=reply-input]');
+  const boxB = b.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]');
   await boxB.fill('Nobody has tested this yet');
   await boxB.press('Enter');
   await expect(b.locator('[data-testid=sidebar-thread] [data-testid=comment-body]')).toHaveText(['Thread', 'Nobody has tested this yet']);
@@ -563,5 +587,5 @@ test("submitting in one tab doesn't delete another open tab's shorter draft", as
   await a.reload();
   await alice.openSidebar(a);
   await a.locator('[data-testid=sidebar-thread]').click();
-  await expect(a.locator('[data-testid=sidebar-thread] [data-testid=reply-input]')).toHaveValue('No');
+  await expect(a.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveValue('No');
 });

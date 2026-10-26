@@ -50,6 +50,16 @@ Choices made while building this without supervision, with the reasoning.
   (`--test-open-shadow`) use an open root only so Playwright can find elements; two e2e tests run
   the production build: one checks the page can't get in, the other drives the UI with real
   mouse and keyboard input. The session token never leaves the background worker.
+- **Text fields in extension-origin frames** (`input.html`, a web-accessible page): every
+  place you type (composer, replies, edits, sign-in email and code, display name) is an iframe
+  whose field talks only to the background worker, which relays to the content script that opened
+  it (matched by an unguessable session id). A closed shadow root isn't enough for typed text: a
+  focused `<textarea>` inside it is still the page's selection, so `execCommand('selectAll')` +
+  `getSelection().toString()` read the draft, and page key listeners registered before our shield
+  (tabs we were injected into late) saw keystrokes. In a cross-origin frame the page gets neither.
+  The parent never pushes back a value the frame itself reported (renders can lag a keystroke);
+  a frame that loads twice (the page navigated it) is replaced with a fresh session. Page CSPs
+  don't apply to extension frames (tested under `frame-src 'none'`).
 - **Popover top layer** for the adder, cards, sidebar and launcher, so no page z-index or
   transform can cover or displace them.
 - **Event shield** (`early.ts`, at `document_start`): key, pointer, focus, clipboard and input

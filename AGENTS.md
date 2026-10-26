@@ -17,6 +17,8 @@ src/extension/
   content/             early.ts (event shield, document_start), index.tsx (controller),
                        anchoring/ (Hypothesis code + our anchor.ts/manager.ts),
                        highlights.ts (CSS Custom Highlight API), ui/ (Preact, Shadow DOM)
+  input/               input.html: every text field, framed by the UI (extension origin,
+                       relayed through the worker so pages can't read what's typed)
   extension-key.json   public key -> stable extension id igipapgffolpgikiojpjbpdngefekkbg
 scripts/               build-extension.mjs, build-server.mjs, render-icons.mjs
 tests/unit, tests/server   vitest
@@ -44,7 +46,9 @@ npm run test:smoke         # against production (own build with an open shadow r
 
 The e2e build (`build/ext-test`) uses an open shadow root so Playwright can drive the UI;
 production builds use a closed one (`build/ext-test-closed` is the same build closed, for the
-isolation test).
+isolation test). Text fields are iframes: reach them with
+`page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]')`
+(likewise `reply-input`, `edit-input`, `signin-email`, `signin-code`).
 
 Playwright starts everything it needs (`playwright.config.ts`): the backend on 18787 with an
 in-memory DB, a proxy on 18788 (the extension's API; `/_test/network` cuts it to simulate
