@@ -173,3 +173,47 @@ test('typing while the service worker restarts is kept, and Enter sends what the
   await alice.openSidebar(a);
   await expect(a.locator('[data-testid=draft-row]')).toHaveCount(0);
 });
+
+test("an unsent edit of a thread's first comment is private text in the sidebar preview", async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Threads with email replies', 'Original body');
+  await setNetwork(true);
+  const card = a.locator('[data-testid=thread-card]');
+  await card.locator('[data-testid=comment]').first().hover();
+  await card.locator('[data-testid=edit]').click();
+  const edit = card.frameLocator('iframe[data-testid=edit-input-frame]').locator('[data-testid=edit-input]');
+  await edit.fill('Unsent edit');
+  await edit.press('Enter');
+  await expect(card.locator('[data-testid=comment-body]').first()).toHaveText('Unsent edit');
+  // Private() renders as .pv-test in test builds (generated content in production).
+  await expect(card.locator('[data-testid=comment-body] .pv-test')).toHaveText(['Unsent edit']);
+  await a.keyboard.press('Escape');
+  await alice.openSidebar(a);
+  await expect(a.locator('[data-testid=sidebar-thread] .row-first .pv-test')).toHaveText('Unsent edit');
+  await setNetwork(false);
+  await expect(a.locator('[data-testid=sidebar-thread] .row-first .pv-test')).toHaveCount(0, { timeout: 30_000 });
+  await expect(a.locator('[data-testid=sidebar-thread] .row-first')).toHaveText('Unsent edit');
+});
+
+test('"Copy text" copies from the extension frame, also on plain-HTTP pages', async ({ alice }) => {
+  await alice.context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const path = `http://insecure.test:18902${uniquePath('article')}`;
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await selectText(a, 'Threads with email replies');
+  await a.locator('[data-testid=adder]').click();
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('Draft to copy out');
+  await a.waitForTimeout(800);
+  await a.reload();
+  await alice.openSidebar(a);
+  const row = a.locator('[data-testid=draft-row]');
+  await expect(row).toContainText('Draft to copy out');
+  await row.frameLocator('iframe[data-testid=copy-text-frame]').locator('[data-testid=copy-text]').click();
+  await expect(a.locator('[data-testid=toast]')).toHaveText('Copied to clipboard');
+  // Read the clipboard from a secure page.
+  const reader = await alice.open(uniquePath('article'));
+  expect(await reader.evaluate(() => navigator.clipboard.readText())).toBe('Draft to copy out');
+});
+

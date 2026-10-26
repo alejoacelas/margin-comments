@@ -670,3 +670,22 @@ test("submitting in one tab doesn't delete another open tab's shorter draft", as
   await a.locator('[data-testid=sidebar-thread]').click();
   await expect(a.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]')).toHaveValue('No');
 });
+
+test('keys typed right after Enter never end up in the comment or in a phantom draft', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await selectText(a, 'Open annotation standard');
+  await a.locator('[data-testid=adder]').click();
+  const box = a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+  await box.fill('Posted text');
+  // Enter and the next keys in one burst, like a fast typist.
+  await a.keyboard.type('\nzz');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]').first()).toHaveText('Posted text');
+  await a.waitForTimeout(800);
+  await a.keyboard.press('Escape');
+  await alice.openSidebar(a);
+  await expect(a.locator('[data-testid=sidebar-thread] .row-first')).toHaveText(['Posted text']);
+  for (const row of await a.locator('[data-testid=draft-row]').all()) await expect(row).not.toContainText('Posted text');
+});
+

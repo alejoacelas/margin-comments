@@ -49,7 +49,52 @@ function reportHeight() {
   }
 }
 
+/** The text a `copy` button copies (kept current by `set`). */
+let copyText = '';
+
+function buildCopy(init: InputInit) {
+  copyText = init.value;
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = ['copy', init.muted ? 'muted' : '', init.small ? 'small' : ''].filter(Boolean).join(' ');
+  b.textContent = init.label;
+  if (init.testId) b.dataset.testid = init.testId;
+  b.addEventListener('click', async () => {
+    // Copied from this extension page: the host page never holds the text
+    // (no selection, no copy event it could observe), and it works on plain
+    // HTTP pages, where content scripts have no clipboard API.
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(copyText);
+      ok = true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = copyText;
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    }
+    send({ t: 'event', type: 'copied', value: ok ? 'ok' : 'failed' });
+  });
+  document.body.appendChild(b);
+  // The frame is sized to the button; re-measure once the web font is in.
+  const size = () => {
+    const r = b.getBoundingClientRect();
+    send({ t: 'event', type: 'width', value: String(Math.ceil(r.width) + 1) });
+    send({ t: 'event', type: 'height', value: String(Math.ceil(r.height)) });
+  };
+  size();
+  new ResizeObserver(size).observe(b);
+  void document.fonts.ready.then(size);
+  send({ t: 'event', type: 'ready', value: '' });
+}
+
+let built = false;
+
 function build(init: InputInit) {
+  built = true;
+  if (init.kind === 'copy') return buildCopy(init);
   const el = init.kind === 'textarea' ? document.createElement('textarea') : document.createElement('input');
   if (el instanceof HTMLInputElement) {
     el.type = init.kind === 'email' ? 'email' : 'text';
@@ -77,6 +122,9 @@ function build(init: InputInit) {
     const submit = e.key === 'Enter' && !composing && (el instanceof HTMLInputElement || !e.shiftKey || e.metaKey || e.ctrlKey);
     if (submit) {
       e.preventDefault();
+      // Lock right away (the parent confirms or lifts it): keys typed while
+      // the comment is being sent must not land in the text being sent.
+      el.readOnly = true;
       send({ t: 'event', type: 'submit', value: el.value });
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -91,6 +139,7 @@ function build(init: InputInit) {
 }
 
 function run(cmd: InputCommand) {
+  if (cmd.cmd === 'set') copyText = cmd.value ?? '';
   if (!field) return;
   if (cmd.cmd === 'set') {
     field.value = cmd.value ?? '';
@@ -114,8 +163,8 @@ function connect(): chrome.runtime.Port {
   p.onMessage.addListener((msg: { t: 'init'; init: InputInit } | { t: 'cmd'; cmd: InputCommand }) => {
     if (msg.t === 'init') {
       attached = true;
-      if (!field) build(msg.init);
-      else {
+      if (!built) build(msg.init);
+      else if (field) {
         // Re-attached after the worker restarted: the field is the source of
         // truth for what was typed meanwhile.
         send({ t: 'event', type: 'input', value: field.value });

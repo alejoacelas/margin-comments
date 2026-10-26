@@ -42,20 +42,26 @@ export type Draft = {
 
 export type Connection = 'online' | 'connecting' | 'offline';
 
-/** A text field hosted in the extension-origin input frame (input.html). */
+/**
+ * A text field hosted in the extension-origin input frame (input.html), or
+ * (`copy`) a "Copy text" button that copies `value` from inside the frame.
+ */
 export type InputInit = {
-  kind: 'textarea' | 'email' | 'text' | 'code';
+  kind: 'textarea' | 'email' | 'text' | 'code' | 'copy';
   value: string;
   placeholder: string;
   label: string;
   rows?: number;
   maxLength?: number;
   testId?: string;
+  /** `copy` buttons: the quieter grey style; the smaller size used in status lines. */
+  muted?: boolean;
+  small?: boolean;
 };
 
 export type InputCommand = { cmd: 'set'; value: string } | { cmd: 'focus' } | { cmd: 'readonly'; on: boolean };
 
-export type InputEventType = 'ready' | 'input' | 'submit' | 'escape' | 'height';
+export type InputEventType = 'ready' | 'input' | 'submit' | 'escape' | 'height' | 'width' | 'copied';
 
 /** Frame -> worker. */
 export type InputPortMessage = { t: 'hello'; sid: string } | { t: 'event'; sid: string; type: InputEventType; value: string };

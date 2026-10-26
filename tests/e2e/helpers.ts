@@ -48,7 +48,9 @@ export class Person {
       channel: 'chromium',
       headless: !process.env.HEADED,
       viewport: { width: 1280, height: 860 },
-      args: [`--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`],
+      // insecure.test: the fixture server under a name that isn't localhost, so
+      // pages are plain-HTTP insecure contexts like most of the web's http:// pages.
+      args: [`--disable-extensions-except=${extPath}`, `--load-extension=${extPath}`, '--host-resolver-rules=MAP insecure.test 127.0.0.1'],
     });
     let sw = context.serviceWorkers()[0];
     if (!sw) sw = await context.waitForEvent('serviceworker');

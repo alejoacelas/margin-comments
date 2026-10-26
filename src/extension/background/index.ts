@@ -7,6 +7,7 @@ import type { Me, ServerConfig, Thread } from '../../shared/types';
 import type { Connection, Draft, InputCommand, InputInit, InputPortMessage, NewOp, Op, RpcMethod, RpcMethods, ToBackground, ToContent } from '../messages';
 import { PORT_NAME } from '../messages';
 import { api, API_URL, RequestError, TransientError, WS_URL } from './api';
+import { uuid } from '../../shared/id';
 
 type Session = { token: string; user: Me };
 
@@ -415,7 +416,7 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     if (userId && userId !== session.user.id) throw new Error("You're signed in as a different account now. Your text is kept as a draft.");
     const full = {
       ...op,
-      opId: crypto.randomUUID(),
+      opId: uuid(),
       userId: session.user.id,
       createdAt: Date.now(),
       attempts: 0,
@@ -450,11 +451,11 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     if (op) {
       if (op.errorCode === 'id_conflict') {
         // Same ids already used for different text: send this text as new.
-        if (op.kind === 'addComment') op.commentId = crypto.randomUUID();
+        if (op.kind === 'addComment') op.commentId = uuid();
         if (op.kind === 'createThread') {
-          const threadId = crypto.randomUUID();
+          const threadId = uuid();
           op.threadId = threadId;
-          op.payload = { ...op.payload, id: threadId, comment: { ...op.payload.comment, id: crypto.randomUUID() } };
+          op.payload = { ...op.payload, id: threadId, comment: { ...op.payload.comment, id: uuid() } };
         }
       }
       op.status = 'pending';

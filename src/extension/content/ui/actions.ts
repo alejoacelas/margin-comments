@@ -32,7 +32,8 @@ export interface Actions {
   closeCard(): void;
   toggleSidebar(open?: boolean): void;
   setFilter(filter: 'open' | 'resolved'): void;
-  copy(text: string): void;
+  /** A short confirmation at the bottom of the screen. */
+  toast(message: string): void;
   refresh(): void;
   anchorBox(threadId: string): AnchorBox | null;
   draftBox(): AnchorBox | null;

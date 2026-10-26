@@ -172,3 +172,15 @@ test('dark pages get dark highlight colors', async ({ alice }) => {
   const names = await a.evaluate(() => [...(CSS as any).highlights.keys()].filter((n: string) => n.startsWith('mc-') && (CSS as any).highlights.get(n).size > 0));
   expect(names.every((n: string) => n.endsWith('-d'))).toBe(true);
 });
+
+test('works on plain-HTTP pages (insecure context, no crypto.randomUUID)', async ({ alice }) => {
+  const a = await alice.open(`http://insecure.test:18902${uniquePath('article')}`);
+  expect(await a.evaluate(() => window.isSecureContext)).toBe(false);
+  await alice.signIn(a);
+  await createThread(a, 'Marginalia record a conversation', 'Works over plain HTTP');
+  await expect.poll(() => highlightTexts(a)).toEqual(['Marginalia record a conversation']);
+  await a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('And replies');
+  await a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Works over plain HTTP', 'And replies']);
+});
+

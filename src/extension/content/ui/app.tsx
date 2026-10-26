@@ -5,7 +5,7 @@ import { hueIndexFor, OTHER_HUES } from '../highlights';
 import { isMine, type State, type Store, useStore, viewThreads, type ViewThread } from '../store';
 import type { Actions, AnchorBox } from './actions';
 import { Composer, ThreadView } from './thread';
-import { Avatar, Icons, Layer, Private, SecureField, timeAgo } from './util';
+import { Avatar, CopyButton, Icons, Layer, Private, SecureField, timeAgo } from './util';
 
 const CARD_WIDTH = 248;
 const SIDEBAR_WIDTH = 320;
@@ -257,7 +257,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
           <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </div>
       ) : first ? (
-        <div class="row-first">{thread.pending ? <Private text={first.body} /> : first.body}</div>
+        <div class="row-first">{thread.pending || first.pending || first.failedOp ? <Private text={first.body} /> : first.body}</div>
       ) : null}
     </div>
   );
@@ -282,9 +282,7 @@ function DraftRow({ draft, actions, note }: { draft: Draft; actions: Actions; no
             Continue
           </button>
         )}
-        <button class="link-btn muted" onClick={() => actions.copy(draft.text)}>
-          Copy text
-        </button>
+        <CopyButton text={draft.text} muted actions={actions} />
         <button class="link-btn muted" onClick={() => actions.deleteDraft(draft.key, [draft.text], { onlyTexts: true })}>
           Discard
         </button>
@@ -302,9 +300,7 @@ function StrandedRow({ op, actions }: { op: Op; actions: Actions }) {
       </div>
       <div class="c-status failed">{op.error ?? 'Not saved'}</div>
       <div class="row-end" style={{ justifyContent: 'flex-start' }}>
-        <button class="link-btn" onClick={() => actions.copy(text)}>
-          Copy text
-        </button>
+        <CopyButton text={text} actions={actions} />
         <button class="link-btn muted" onClick={() => actions.retryOp(op.opId)}>
           Retry
         </button>
@@ -542,7 +538,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
 
       {ui.toast ? (
         <Layer class="toast" role="status">
-          {ui.toast}
+          <span data-testid="toast">{ui.toast}</span>
         </Layer>
       ) : null}
     </div>

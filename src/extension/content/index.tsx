@@ -15,6 +15,7 @@ import { isMine, type State, Store, type UiState, viewThreads, type ViewThread }
 import type { Actions, AnchorBox } from './ui/actions';
 import { App } from './ui/app';
 import { CSS_TEXT } from './ui/styles';
+import { uuid } from '../../shared/id';
 
 declare const __API_URL__: string;
 declare const __OPEN_SHADOW__: boolean;
@@ -619,8 +620,8 @@ class MarginComments implements Actions {
       adder: null,
       activeThreadId: null,
       composer: {
-        threadId: crypto.randomUUID(),
-        commentId: crypto.randomUUID(),
+        threadId: uuid(),
+        commentId: uuid(),
         draftKey,
         quote: desc.quote,
         selectors: desc.selectors,
@@ -654,7 +655,7 @@ class MarginComments implements Actions {
 
   private composerAttempt: { threadId: string; commentId: string; body: string } | null = null;
   /** Identifies this page's editors, so drafts from other tabs aren't overwritten or deleted. */
-  private readonly instanceId = crypto.randomUUID();
+  private readonly instanceId = uuid();
 
   async createThread(body: string) {
     const c0 = this.store.state.ui.composer;
@@ -662,7 +663,7 @@ class MarginComments implements Actions {
     // A different text than a previous (possibly half-delivered) attempt is a
     // new thread: fresh ids, so it can't be mistaken for a retry.
     if (this.composerAttempt && this.composerAttempt.threadId === c0.threadId && this.composerAttempt.body !== body) {
-      this.store.setUi({ composer: { ...c0, threadId: crypto.randomUUID(), commentId: crypto.randomUUID() } });
+      this.store.setUi({ composer: { ...c0, threadId: uuid(), commentId: uuid() } });
     }
     const c = this.store.state.ui.composer!;
     this.composerAttempt = { threadId: c.threadId, commentId: c.commentId, body };
@@ -858,8 +859,8 @@ class MarginComments implements Actions {
     this.store.setUi({
       activeThreadId: null,
       composer: {
-        threadId: crypto.randomUUID(),
-        commentId: crypto.randomUUID(),
+        threadId: uuid(),
+        commentId: uuid(),
         draftKey: draft.key,
         initialText: draft.text,
         quote: draft.anchor.quote,
@@ -908,21 +909,6 @@ class MarginComments implements Actions {
     this.store.setUi({ sidebarFilter: filter, activeThreadId: null });
   }
 
-  copy(text: string) {
-    navigator.clipboard
-      .writeText(text)
-      .then(() => this.toast('Copied to clipboard'))
-      .catch(() => {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        this.container.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand('copy');
-        ta.remove();
-        this.toast(ok ? 'Copied to clipboard' : "Couldn't copy. Select the text and copy it manually.");
-      });
-  }
-
   refresh() {
     void this.port.call('refresh', {}).catch(() => {});
   }
@@ -941,7 +927,7 @@ class MarginComments implements Actions {
     return this.anchors.get(threadId).status === 'orphan';
   }
 
-  private toast(text: string) {
+  toast(text: string) {
     if (this.toastTimer) clearTimeout(this.toastTimer);
     this.store.setUi({ toast: text });
     this.toastTimer = setTimeout(() => this.store.setUi({ toast: null }), 3500);

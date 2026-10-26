@@ -185,3 +185,29 @@ test('an unchanged repeat with the right context still anchors exactly', async (
   });
   expect(res?.id).toBe('a');
 });
+
+test('an edited repeat at the very start or end of the page stays on its own passage', async ({ page }) => {
+  for (const which of ['end', 'start'] as const) {
+    const q = 'The quick brown fox jumps over the lazy dog.';
+    await load(
+      page,
+      which === 'end'
+        ? `<p id="a">Opening for the first part. ${q} First part closes here.</p><p id="b">Another start in part two. ${q}</p>`
+        : `<p id="b">${q} Part one continues afterwards.</p><p id="a">Opening for the second part. ${q} Second part closes here.</p>`,
+    );
+    const where = await page.evaluate(q => {
+      const mc = (window as any).__mc;
+      const t = document.getElementById('b')!.firstChild as Text;
+      const i = t.data.indexOf(q);
+      const r = document.createRange();
+      r.setStart(t, i);
+      r.setEnd(t, i + q.length);
+      const { selectors } = mc.describeRange(document.body, r);
+      t.data = t.data.replace('quick', 'swift');
+      const res = mc.anchorSelectors(document.body, selectors);
+      return res ? (res.range.startContainer.parentElement as HTMLElement).id : null;
+    }, q);
+    expect(where, which).toBe('b');
+  }
+});
+

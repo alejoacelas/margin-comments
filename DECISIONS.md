@@ -72,7 +72,13 @@ Choices made while building this without supervision, with the reasoning.
   rebuild text a character at a time, nor from `find` + `execCommand('selectAll')`; generated
   content (`content: attr(data-t)`) is invisible to both. The rest of the UI is
   `user-select: none`, except public text (comments, quotes). Test builds render plain text so
-  Playwright can read it; production-build e2e tests check that the page finds nothing.
+  Playwright can read it; production-build e2e tests check that the page finds nothing. Since
+  private text can't be selected, its "Copy text" button is itself an extension frame that
+  copies from inside the frame: the text is never selected in the page, and it works on
+  plain-HTTP pages, where content scripts have no clipboard API.
+- **Plain-HTTP pages are insecure contexts**: content scripts there lack `crypto.randomUUID()`
+  and `navigator.clipboard`, so ids come from `getRandomValues` (`src/shared/id.ts`). An e2e
+  test runs on `http://insecure.test` (mapped to localhost, which itself counts as secure).
 - **Accepted limitation: your threads' highlight color.** The CSS Custom Highlight registry and
   highlight colors (`getComputedStyle(el, '::highlight(x)')`) are readable by the page, so a page
   can tell which passages are highlighted as yours (yellow, Curius's look) and, by signing up

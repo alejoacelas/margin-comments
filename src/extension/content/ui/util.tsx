@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/ho
 import type { InputInit } from '../../messages';
 import type { Actions } from './actions';
 import { hueIndexFor, OTHER_HUES } from '../highlights';
+import { uuid } from '../../../shared/id';
 
 export function timeAgo(iso: string, now = Date.now()): string {
   const t = Date.parse(iso);
@@ -63,6 +64,28 @@ export function Avatar({ name, own }: { name: string; own: boolean }) {
     <span class="avatar" style={{ background: avatarColor(name, own) }} aria-hidden="true">
       {initial}
     </span>
+  );
+}
+
+/**
+ * "Copy text" for private text (drafts, unsaved comments). The button lives
+ * in the extension frame and copies from there, so the text never has to be
+ * selected in the page, and it works on plain-HTTP pages too.
+ */
+export function CopyButton({ text, muted, small, actions }: { text: string; muted?: boolean; small?: boolean; actions: Actions }) {
+  return (
+    <SecureField
+      kind="copy"
+      value={text}
+      onChange={() => {}}
+      placeholder=""
+      label="Copy text"
+      testId="copy-text"
+      muted={muted}
+      small={small}
+      actions={actions}
+      onCopied={ok => actions.toast(ok ? 'Copied to clipboard' : "Couldn't copy the text.")}
+    />
   );
 }
 
@@ -170,7 +193,7 @@ export function isSubmitKey(e: KeyboardEvent): boolean {
 }
 
 export function newId(): string {
-  return crypto.randomUUID();
+  return uuid();
 }
 
 /**
@@ -192,6 +215,10 @@ export function SecureField(props: {
   autoFocus?: boolean;
   readOnly?: boolean;
   testId?: string;
+  muted?: boolean;
+  small?: boolean;
+  /** `copy` buttons: whether the copy worked. */
+  onCopied?: (ok: boolean) => void;
   actions: Actions;
 }) {
   // A new session (and frame) per mount; if the page ever navigates our frame
@@ -203,7 +230,7 @@ export function SecureField(props: {
 }
 
 function SecureFrame(props: Parameters<typeof SecureField>[0] & { onHijack: () => void }) {
-  const sid = useMemo(() => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, ''), []);
+  const sid = useMemo(() => `${uuid()}${uuid()}`.replace(/-/g, ''), []);
   const frameRef = useRef<HTMLIFrameElement>(null);
   const latest = useRef(props);
   latest.current = props;
@@ -212,13 +239,16 @@ function SecureFrame(props: Parameters<typeof SecureField>[0] & { onHijack: () =
   // drop what was just typed, so only values we didn't get from the frame are sent.
   const fromFrame = useRef<string[]>([props.value]);
   const loads = useRef(0);
-  const [height, setHeight] = useState(props.kind === 'textarea' ? (props.rows ?? 3) * 17 + 12 : props.kind === 'code' ? 40 : 32);
+  const [height, setHeight] = useState(
+    props.kind === 'textarea' ? (props.rows ?? 3) * 17 + 12 : props.kind === 'code' ? 40 : props.kind === 'copy' ? 16 : 32,
+  );
+  const [width, setWidth] = useState(56);
 
   useLayoutEffect(() => {
     const p = latest.current;
     p.actions.openField(
       sid,
-      { kind: p.kind, value: p.value, placeholder: p.placeholder, label: p.label, rows: p.rows, maxLength: p.maxLength, testId: p.testId },
+      { kind: p.kind, value: p.value, placeholder: p.placeholder, label: p.label, rows: p.rows, maxLength: p.maxLength, testId: p.testId, muted: p.muted, small: p.small },
       (type, value) => {
         const cur = latest.current;
         const changed = () => {
@@ -231,8 +261,13 @@ function SecureFrame(props: Parameters<typeof SecureField>[0] & { onHijack: () =
           // Carries the field's value; make sure we have it (and its draft) first.
           if (fromFrame.current[fromFrame.current.length - 1] !== value) changed();
           cur.onSubmit?.(value);
+          // The field locked itself on Enter; once the submit handler has
+          // rendered (busy -> readOnly, or ignored), tell it the real state.
+          setTimeout(() => latest.current.actions.fieldCommand(sid, { cmd: 'readonly', on: !!latest.current.readOnly }), 0);
         } else if (type === 'escape') cur.onEscape?.(value);
-        else if (type === 'height') setHeight(Math.max(20, Number(value) || 0));
+        else if (type === 'height') setHeight(Math.max(cur.kind === 'copy' ? 10 : 20, Number(value) || 0));
+        else if (type === 'width') setWidth(Math.max(10, Number(value) || 0));
+        else if (type === 'copied') cur.onCopied?.(value === 'ok');
         else if (type === 'ready') {
           if (cur.readOnly) cur.actions.fieldCommand(sid, { cmd: 'readonly', on: true });
           if (cur.autoFocus) {
@@ -264,11 +299,12 @@ function SecureFrame(props: Parameters<typeof SecureField>[0] & { onHijack: () =
     <iframe
       key={sid}
       ref={frameRef}
-      class="field-frame"
+      class={props.kind === 'copy' ? 'copy-frame' : 'field-frame'}
       src={`${props.actions.inputUrl}#${sid}`}
       title={props.label}
+      allow={props.kind === 'copy' ? 'clipboard-write' : undefined}
       data-testid={props.testId ? `${props.testId}-frame` : undefined}
-      style={{ height: `${height}px` }}
+      style={props.kind === 'copy' ? { height: `${height}px`, width: `${width}px` } : { height: `${height}px` }}
       onLoad={() => {
         // Our input page never navigates itself: a second load means the page
         // navigated the frame somewhere else. Replace it.

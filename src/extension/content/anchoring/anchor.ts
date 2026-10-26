@@ -257,7 +257,10 @@ function matchQuoteInIndex(
     // surroundings. (A changed name in a list of similar items, say
     // setEndAfter -> setEndBefore, is a different item: the exact text wins.)
     const top = candidates[0];
-    if (top && top.quoteScore === 1 && (prefix || suffix) && q.length >= 20 && (top.prefixScore + top.suffixScore) / 2 < 0.5) {
+    // Only the context sides we have count (a quote can start or end the page).
+    const sides = top ? [prefix ? top.prefixScore : -1, suffix ? top.suffixScore : -1].filter(x => x >= 0) : [];
+    const topContext = sides.length ? sides.reduce((a, b) => a + b, 0) / sides.length : 1;
+    if (top && top.quoteScore === 1 && sides.length && q.length >= 20 && topContext < 0.5) {
       const near = matchQuoteCandidates(text, q, { prefix, suffix, hint }, true).find(c => c.quoteScore < 1);
       if (near && near.quoteScore >= 0.85 && near.prefixScore >= 0.95 && near.suffixScore >= 0.95) candidates = [near, ...candidates];
     }

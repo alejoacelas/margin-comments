@@ -188,3 +188,18 @@ Also found while fixing C1 (not reported by the reviewers): the page can read th
 registry and highlight colors, so it can tell which highlights are yours. Kept as an accepted
 limitation (see DECISIONS.md).
 
+## Round 12 — full repository (2026-10-26)
+
+Reviewer B found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| C2 | **The content script crashed on plain-HTTP pages: `crypto.randomUUID()` doesn't exist in insecure contexts (the e2e fixtures were all on localhost, which counts as secure)** | Fixed | `uuid()` from `getRandomValues`. e2e "works on plain-HTTP pages" on `insecure.test`; unit test for the ids. Same cause: "Copy text" relied on `navigator.clipboard` and fell back to selecting the text in the page; it is now a button in an extension frame that copies from there. e2e "Copy text copies from the extension frame, also on plain-HTTP pages" |
+| A1 / C1 | An unsent edit of a thread's first comment showed as plain (findable) text in the collapsed sidebar row | Fixed | The preview is private whenever the first comment is pending or failed. e2e "an unsent edit of a thread's first comment is private text in the sidebar preview" |
+| A2 | The edited-repeat rule never fired for quotes at the start or end of the page (a missing context side counted as a perfect match) | Fixed | Only present context sides count. Anchoring regression "an edited repeat at the very start or end of the page…", verified to fail on the old rule |
+
+Found while checking the round-11 fix visually: keys typed right after Enter (fast typing) went
+into the field being sent, leaving a phantom "unsent draft" with the posted text. The field now
+locks itself on Enter until the editor confirms. e2e "keys typed right after Enter never end up…",
+verified to fail without the lock.
+

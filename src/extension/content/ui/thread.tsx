@@ -5,7 +5,7 @@ import type { Draft, Op } from '../../messages';
 import type { ViewComment, ViewThread } from '../store';
 import { isMine } from '../store';
 import type { Actions } from './actions';
-import { Icons, Linkified, newId, Private, SecureField, timeAgo } from './util';
+import { CopyButton, Icons, Linkified, newId, Private, SecureField, timeAgo } from './util';
 
 function OpStatus({ op, text, actions }: { op?: Op; text?: string; actions: Actions }) {
   if (!op) return null;
@@ -15,11 +15,7 @@ function OpStatus({ op, text, actions }: { op?: Op; text?: string; actions: Acti
       <button class="link-btn" onClick={() => actions.retryOp(op.opId)}>
         Retry
       </button>
-      {text ? (
-        <button class="link-btn" onClick={() => actions.copy(text)}>
-          Copy text
-        </button>
-      ) : null}
+      {text ? <CopyButton text={text} small actions={actions} /> : null}
       <button class="link-btn muted" onClick={() => actions.discardOp(op.opId)}>
         Discard
       </button>
