@@ -1,9 +1,12 @@
-import { createThread, expect, selectText, test , uniquePath } from './helpers';
+import { closeSidebar, createThread, expect, selectText, test, uniquePath } from './helpers';
 
 // Not an assertion test: captures the UI for visual review (test-results/screens).
 test('capture UI screenshots', async ({ alice, bob }) => {
   const path = uniquePath('article');
   const page = await alice.open(path);
+  await alice.openSidebar(page);
+  await page.screenshot({ path: 'test-results/screens/0-signin.png' });
+  await closeSidebar(page);
   await alice.signIn(page);
   await selectText(page, 'Readers have always written in the margins of books.');
   await expect(page.locator('[data-testid=adder]')).toBeVisible();

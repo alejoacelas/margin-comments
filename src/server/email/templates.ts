@@ -9,9 +9,13 @@ export function esc(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Collapse whitespace and shorten to `n` characters, at a word boundary when possible. */
 function truncate(s: string, n: number): string {
   const flat = s.replace(/\s+/g, ' ').trim();
-  return flat.length > n ? `${flat.slice(0, n - 1).trimEnd()}…` : flat;
+  if (flat.length <= n) return flat;
+  const cut = flat.slice(0, n - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > n * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
 
 /** Only http(s) URLs are ever placed in href attributes. */
@@ -79,7 +83,8 @@ export type NotificationInput = {
 export function notificationEmail(n: NotificationInput) {
   const title = truncate(n.pageTitle || hostOf(n.pageUrl), 80);
   const quoteShort = truncate(n.quote, 50);
-  const subject = `“${quoteShort}” on ${title}`;
+  // Same subject for every notification of a thread, so mail apps group them.
+  const subject = `“${quoteShort}” — ${title}`;
   const quote = truncate(n.quote, 500);
   const why = n.recipientStartedThread
     ? "You're receiving this because you started this thread."

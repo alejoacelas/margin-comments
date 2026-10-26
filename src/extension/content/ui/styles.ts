@@ -149,6 +149,7 @@ textarea:focus, input:focus { outline: none; border-color: #9ec9ff; }
 
 /* ---- Sign in ---- */
 .signin { padding: 8px; }
+.sidebar .signin { padding: 8px 20px 16px; }
 .signin h3 { font: 600 14px var(--mc-font-ui); margin: 0 0 4px; color: #000; }
 .signin p { font-size: 13px; color: var(--mc-muted); margin: 0 0 10px; }
 .signin form { display: flex; flex-direction: column; gap: 8px; }
