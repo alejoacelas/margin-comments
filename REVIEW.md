@@ -379,3 +379,13 @@ Reviewer A found nothing material.
 | B1 | **Deeply nested blockquotes in an HTML-only reply made the converter's output (and memory) explode: 105 KB took 4.7 s and 551 MiB, above the machine's 512 MB** | Fixed | Quote nesting beyond 8 levels is dropped before conversion (text kept), and the converter runs with depth/child limits. `email.test.ts` "deeply nested HTML quotes are converted with bounded time and output"; verified to fail without the fix |
 | C1 | **Private text drawn in the page could be probed through page-controlled fonts: a face added under one of our font names, limited to one character, loads when that character is shown** | Fixed | Private text (and your own avatar initial) uses only generic font keywords, which page fonts can't take over. The production-build privacy e2e now runs this probe for "@" (email) and "§" (draft) across all our font names; verified to fail without the fix |
 
+## Round 30 — full repository (2026-10-26)
+
+Reviewers A and C found nothing material. Reviewer B's run was cut off by the model provider's
+content filter while it was measuring a denial-of-service lead; its last probe was verified
+here and treated as a finding:
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| B1 | **One account could store 200 threads with ~100 KB quotes on a page; listing that page then built a ~79 MB response and ~600 MB of memory (the machine has 512 MB)** | Fixed | Quotes capped at 50,000 characters, selectors at 120 KB, threads at 100 comments; thread lists also paged by size (~2 MB) before serializing; the extension loads at most 20 pages. `api.test.ts` "thread pages are bounded by size, and every thread is still reachable" and "a thread holds at most 100 comments"; both verified to fail on the previous code |
+

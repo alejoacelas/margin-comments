@@ -69,12 +69,15 @@ export const PUBLIC_GROUP_ID = 'public';
 
 export const LIMITS = {
   commentBody: 10_000,
-  quote: 100_000,
+  /** About 8,000 words. Together with the caps below, a thread stays near 1 MB at most. */
+  quote: 50_000,
   title: 500,
   url: 4096,
   name: 80,
   email: 254,
-  selectorsJson: 300_000,
+  selectorsJson: 120_000,
+  /** Comments in one thread (each thread is sent whole to everyone on the page). */
+  threadComments: 100,
 };
 
 // ---- REST payloads ----

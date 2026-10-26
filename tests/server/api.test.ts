@@ -64,6 +64,52 @@ describe('email sign-in', () => {
     expect(requestId).toBeTruthy();
   });
 
+  it('thread pages are bounded by size, and every thread is still reachable', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    const key = 'example.com/big';
+    const big = 'q'.repeat(49_000);
+    for (let i = 0; i < 60; i++) {
+      const r = await t.app.inject({
+        method: 'POST',
+        url: '/api/threads',
+        headers: auth(token),
+        payload: { ...threadPayload({ pageKeys: [key] }), quote: big, selectors: [{ type: 'TextQuoteSelector', exact: big }] },
+      });
+      expect(r.statusCode).toBe(201);
+    }
+    let after = 0;
+    let seen = 0;
+    let pages = 0;
+    for (;;) {
+      const res = await t.app.inject({ method: 'GET', url: `/api/threads?key=${encodeURIComponent(key)}&after=${after}`, headers: auth(token) });
+      expect(res.body.length).toBeLessThan(3_000_000);
+      const j = res.json();
+      seen += j.threads.length;
+      pages++;
+      if (j.next === null) break;
+      after = j.next;
+    }
+    expect(seen).toBe(60);
+    expect(pages).toBeGreaterThan(1);
+    // Over-long quotes are refused.
+    const tooLong = 'q'.repeat(60_000);
+    const r = await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: { ...threadPayload({ pageKeys: [key] }), quote: tooLong, selectors: [{ type: 'TextQuoteSelector', exact: tooLong }] } });
+    expect(r.statusCode).toBeGreaterThanOrEqual(400);
+  });
+
+  it('a thread holds at most 100 comments', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    const p = threadPayload({ pageKeys: ['example.com/full'] });
+    expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: p })).statusCode).toBe(201);
+    for (let i = 1; i < 100; i++) {
+      const r = await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(token), payload: { id: randomUUID(), body: `reply ${i}` } });
+      expect(r.statusCode, `reply ${i}`).toBeLessThan(300);
+    }
+    const full = await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(token), payload: { id: randomUUID(), body: 'one too many' } });
+    expect(full.statusCode).toBe(409);
+    expect(full.json().error).toBe('thread_full');
+  });
+
   it('rate-limits sign-in emails per address', async () => {
     for (let i = 0; i < 6; i++) {
       const r = await t.app.inject({ method: 'POST', url: '/api/auth/email/start', payload: { email: 'spam@example.com' } });

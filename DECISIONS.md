@@ -231,6 +231,16 @@ Choices made while building this without supervision, with the reasoning.
   tabs, and an orphaned old instance removes itself. (Not covered by e2e: Playwright can't reload
   a command-line-loaded extension.)
 
+## Size limits
+
+- **Bounded responses:** a quote is at most 50,000 characters (about 8,000 words), selectors
+  120 KB, a thread at most 100 comments of 10,000 characters, so one thread stays near 1 MB
+  (each change is sent whole to everyone on the page, and must fit the live connection's
+  buffer). Thread lists are paged by count (200) and by size (about 2 MB, at least one
+  thread); the extension loads at most 20 pages / 2000 threads per page. Without these, one
+  account could fill a page with huge threads and make every visit build tens of megabytes
+  (the 512 MB server ran out of memory in review).
+
 ## Groups
 
 - One shared space in v1 (`group_id = 'public'` on every thread), with `groups` and

@@ -124,6 +124,8 @@ export function getThreadRow(db: DB, id: string) {
 }
 
 export const THREAD_PAGE_SIZE = 200;
+/** A page of threads also stops at about this many bytes of text (at least one thread). */
+export const THREAD_PAGE_BYTES = 2_000_000;
 
 /**
  * One page of a page's threads, oldest first. `after` is the cursor returned
@@ -146,7 +148,26 @@ export function listThreads(
     .all(groupId, ...pageKeys, ...pageKeys, after, limit + 1) as Array<ThreadRow & { _seq: number }>;
   const more = rows.length > limit;
   const page = more ? rows.slice(0, limit) : rows;
-  return { threads: serialize(db, page), next: more ? page[page.length - 1]._seq : null };
+  // Bound the response by size before building it: big quotes and long
+  // threads would otherwise make one page tens of megabytes.
+  const commentBytes = new Map<string, number>();
+  if (page.length) {
+    const ids = page.map(r => r.id);
+    const sums = db
+      .prepare(`SELECT thread_id, SUM(LENGTH(body)) AS n FROM comments WHERE deleted_at IS NULL AND thread_id IN (${ids.map(() => '?').join(',')}) GROUP BY thread_id`)
+      .all(...ids) as Array<{ thread_id: string; n: number }>;
+    for (const s of sums) commentBytes.set(s.thread_id, s.n);
+  }
+  let used = 0;
+  let keep = 0;
+  while (keep < page.length && (keep === 0 || used < THREAD_PAGE_BYTES)) {
+    const r = page[keep];
+    used += r.quote.length + r.selectors.length + (commentBytes.get(r.id) ?? 0) + 1000;
+    keep++;
+  }
+  const chosen = page.slice(0, keep);
+  const next = more || keep < page.length ? chosen[chosen.length - 1]._seq : null;
+  return { threads: serialize(db, chosen), next };
 }
 
 export type CreateThreadInput = {
@@ -252,6 +273,8 @@ export function addComment(
       return { thread, created: false, commentId: comment.id };
     }
     const row = liveThreadRow(db, user, threadId);
+    const { n } = db.prepare('SELECT COUNT(*) AS n FROM comments WHERE thread_id = ? AND deleted_at IS NULL').get(threadId) as { n: number };
+    if (n >= LIMITS.threadComments) throw new ApiError(409, 'thread_full', 'This thread is full. Start a new one.');
     db.prepare('INSERT INTO comments (id, thread_id, author_id, body, source, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
       comment.id,
       threadId,

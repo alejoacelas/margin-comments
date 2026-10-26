@@ -192,7 +192,9 @@ async function loadThreads(info: PortInfo) {
     const query = info.keys.map(k => `key=${encodeURIComponent(k)}`).join('&');
     const threads: Thread[] = [];
     let after = 0;
-    for (let pageNo = 0; pageNo < 100; pageNo++) {
+    // Pages are size-bounded on the server; a page flooded with threads is
+    // still capped here (the oldest 2000 threads, at most 20 pages).
+    for (let pageNo = 0; pageNo < 20 && threads.length < 2000; pageNo++) {
       const page = await api<{ threads: Thread[]; next: number | null }>('GET', `/api/threads?${query}&after=${after}`, { token });
       threads.push(...page.threads);
       if (page.next === null || page.next === undefined) break;

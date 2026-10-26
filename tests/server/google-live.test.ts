@@ -235,7 +235,7 @@ describe('live updates', () => {
 
     // Stop reading, then generate ~6 MB of updates (large quote, many edits).
     (s.ws as any)._socket.pause();
-    const big = 'lorem ipsum dolor sit amet '.repeat(3500);
+    const big = 'lorem ipsum dolor sit amet '.repeat(1800); // under the 50k quote limit
     const p = threadPayload({ quote: big, selectors: [{ type: 'TextQuoteSelector', exact: big }] });
     await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(a.token), payload: p });
     for (let i = 0; i < 80; i++) {
