@@ -354,14 +354,14 @@ export type Description = {
  * Describe a user selection. Returns null if the range has no text or lies
  * outside `root`.
  */
-export function describeRange(root: Element, range: Range): Description | null {
+export function describeRange(root: Element, range: Range, opts: { index?: TextIndex } = {}): Description | null {
   const inShadow = range.commonAncestorContainer.getRootNode() instanceof ShadowRoot;
   if (inShadow ? !composedContains(root, range.commonAncestorContainer) : !root.contains(range.commonAncestorContainer)) return null;
   if (!range.toString().trim()) return null;
+  const index = opts.index && opts.index.root === root ? opts.index : new TextIndex(root);
   if (inShadow) {
     // Hypothesis's trimming needs element parents (text can sit directly
     // under a shadow root): trim through the index instead.
-    const index = new TextIndex(root);
     const span = index.trimmedRawSpan(range);
     const trimmedRange = span && index.rangeFor(span[0], span[1]);
     if (!span || !trimmedRange) return null;
@@ -375,28 +375,18 @@ export function describeRange(root: Element, range: Range): Description | null {
   } catch {
     return null;
   }
-  let selectors: Selector[] | null;
-  if (!hasOpenShadowRoot(root)) {
-    selectors = hypothesisDescribe(root, trimmed);
-  } else {
-    // A page with web components: its rendered text (which matching uses)
-    // differs from the light DOM's, so position and context come from our
-    // index too; the light-DOM XPath stays as a hint.
-    const own = describeWithIndex(new TextIndex(root), trimmed);
-    const hyp = hypothesisDescribe(root, trimmed);
-    selectors = own ? [...hyp.filter(s => s.type === 'RangeSelector'), ...own] : hyp;
-  }
-  if (!selectors) return null;
+  // Position, quote and context come from our index, i.e. the rendered text
+  // that matching uses: script/style text never enters a selector (it's
+  // stored and shown to everyone; Hypothesis's context could include an
+  // adjacent inline <script>'s data), and pages with web components get
+  // consistent offsets. Hypothesis adds the light-DOM XPath as a hint.
+  const hyp = hypothesisDescribe(root, trimmed);
+  const own = describeWithIndex(index, trimmed) ?? describeWithIndex(index, trimmed, index.trimmedRawSpan(trimmed) ?? undefined);
+  if (!own) return null;
+  const selectors: Selector[] = [...hyp.filter(s => s.type === 'RangeSelector'), ...own];
   const quoteSel = selectors.find((s): s is TextQuoteSelector => s.type === 'TextQuoteSelector');
   if (!quoteSel || !stripWs(quoteSel.exact)) return null;
   return { selectors, quote: collapseWs(quoteSel.exact), range: trimmed };
-}
-
-/** Any open shadow root (a web component's) under `root`? */
-function hasOpenShadowRoot(root: Element): boolean {
-  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-  for (let el = walker.nextNode() as Element | null; el; el = walker.nextNode() as Element | null) if (el.shadowRoot) return true;
-  return false;
 }
 
 /**

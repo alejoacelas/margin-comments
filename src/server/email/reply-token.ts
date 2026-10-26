@@ -32,14 +32,36 @@ export type ReplyTarget = { threadId: string; userId: string };
  * `"<alice@example.com>"` can't pose as the address.
  */
 export function bareAddress(raw: string): string {
-  let s = raw.trim();
-  s = s.replace(/"(?:[^"\\]|\\.)*"/g, ' '); // quoted strings
-  let prev;
-  do {
-    prev = s;
-    s = s.replace(/\([^()]*\)/g, ' '); // comments (nested ones peel off one level per pass)
-  } while (s !== prev);
-  if (/["()]/.test(s)) return '';
+  // Real From/To headers are short; anything huge is rejected outright.
+  if (raw.length > 2000) return '';
+  // One pass (linear even for deeply nested input): drop quoted strings and
+  // (nested) comments; anything unbalanced makes the header invalid.
+  let s = '';
+  let depth = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (depth > 0) {
+      if (c === '\\') i++;
+      else if (c === '(') depth++;
+      else if (c === ')' && --depth === 0) s += ' ';
+      continue;
+    }
+    if (c === '"') {
+      let j = i + 1;
+      while (j < raw.length && raw[j] !== '"') j += raw[j] === '\\' ? 2 : 1;
+      if (j >= raw.length) return '';
+      s += ' ';
+      i = j;
+    } else if (c === '(') {
+      depth = 1;
+    } else if (c === ')') {
+      return '';
+    } else {
+      s += c;
+    }
+  }
+  if (depth !== 0) return '';
+  s = s.trim();
   const angles = s.match(/<[^<>]*>/g) ?? [];
   let addr: string;
   if (angles.length === 1) {

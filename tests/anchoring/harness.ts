@@ -6,6 +6,10 @@ import { TextRange } from '../../src/extension/content/anchoring/hypothesis/text
 import type { Selector } from '../../src/shared/types';
 
 /** Raw offset of a range's start, in the index's terms when given (it also counts web components' text). */
+// One index for describing many selections on an unchanged page.
+let sharedIndex: TextIndex | null = null;
+const shared = () => (sharedIndex && sharedIndex.root === document.body ? sharedIndex : (sharedIndex = new TextIndex(document.body)));
+
 function rawOffset(range: Range, index?: TextIndex): number {
   const viaIndex = index?.rawOffsetOf(range.startContainer, range.startOffset);
   if (viaIndex !== undefined && viaIndex !== null) return viaIndex;
@@ -60,7 +64,7 @@ function makeSelections(seedText: string, count: number) {
     const range = document.createRange();
     range.setStart(start, startOffset);
     range.setEnd(endNode, endOffset);
-    const desc = describeRange(document.body, range);
+    const desc = describeRange(document.body, range, { index: shared() });
     if (!desc) continue;
     out.push({ selectors: desc.selectors, quote: desc.quote, rawStart: rawOffset(desc.range), length: stripWs(desc.quote).length });
   }
@@ -97,7 +101,7 @@ function selectionsFor(texts: string[]) {
     const range = document.createRange();
     range.setStart(a.node, a.offset);
     range.setEnd(b.node, Math.min(b.offset, b.node.data.length));
-    const desc = describeRange(document.body, range);
+    const desc = describeRange(document.body, range, { index: shared() });
     if (desc) out.push({ selectors: desc.selectors, quote: desc.quote, rawStart: rawOffset(desc.range), length: stripWs(desc.quote).length });
   }
   return out;

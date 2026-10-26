@@ -302,3 +302,13 @@ Reviewer C found nothing material.
 Also: the e2e "a reply that can no longer be saved…" was timing-dependent under load (the queued reply could
 land before the other user's delete); the delete now goes straight to the backend while the extensions are offline.
 
+## Round 23 — full repository (2026-10-26)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **Quote context could contain an adjacent inline `<script>`'s data (e.g. JSON with a token) when only the script followed or preceded the passage; selectors are stored and returned to every user** | Fixed | Quote, context and position come from our rendered-text index for every selection; Hypothesis contributes only the XPath hint. Corpus unchanged. Anchoring regression "a thread's stored context never includes an adjacent inline script's data"; verified to fail without the fix |
+| B1 | **HTML reply pre-processing (history markers, document unwrapping) used whole-document regexes that were quadratic on malformed HTML (`'<div '.repeat(16000)`: 11 s on the event loop)** | Fixed | One linear pass over the tags; markers are tested per tag (bounded). `email.test.ts` "malformed HTML is processed in linear time"; verified to fail without the fix |
+| B2 | **`bareAddress` peeled nested comments one level per pass: a deeply nested From header blocked for 3 s before sender checks** | Fixed | Single-pass parsing of quoted strings and nested comments; headers over 2000 characters are refused. `email.test.ts` "handles deeply nested comments in linear time…"; verified to fail without the fix |
+

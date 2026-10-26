@@ -50,45 +50,58 @@ function stripSignOff(text: string): string {
   return text;
 }
 
-// Where Outlook's quoted history starts in HTML (web, desktop, new Outlook):
-// everything from there on is old content. Its history isn't inside one
-// element, so skipping the header element alone would leave the previous
+// Tags where Outlook's quoted history starts in HTML (web, desktop, new
+// Outlook): everything from there on is old content. Its history isn't inside
+// one element, so skipping the header element alone would leave the previous
 // message (our notification) behind. Bounded quotes (<blockquote>, as Apple
 // Mail and Thunderbird use) aren't cut: they become "> " lines, so answers
-// written below or between them are kept like in plain text.
+// written below or between them are kept like in plain text. Tested against
+// one tag at a time (bounded), never against the whole document.
 const HTML_HISTORY_MARKERS: RegExp[] = [
-  /<div[^>]*\bid=["']?appendonsend\b/i,
-  /<div[^>]*\bid=["']?divRplyFwdMsg\b/i,
-  /<hr[^>]*\bid=["']?stopSpelling\b/i,
-  /<div[^>]*\bid=["']?mail-editor-reference-message-container\b/i,
-  /<div[^>]*\bclass=["']?[^"'>]*\bOutlookMessageHeader\b/i,
-  /<div[^>]*style=["'][^"']*border-top:\s*solid\s+#E1E1E1/i,
-  /<div[^>]*\bclass=["']?[^"'>]*\byahoo_quoted\b/i,
+  /^<div\b[^>]*\bid=["']?appendonsend\b/i,
+  /^<div\b[^>]*\bid=["']?divRplyFwdMsg\b/i,
+  /^<hr\b[^>]*\bid=["']?stopSpelling\b/i,
+  /^<div\b[^>]*\bid=["']?mail-editor-reference-message-container\b/i,
+  /^<div\b[^>]*\bclass=["']?[^"'>]*\bOutlookMessageHeader\b/i,
+  /^<div\b[^>]*style=["'][^"']*border-top:\s*solid\s+#E1E1E1/i,
+  /^<div\b[^>]*\bclass=["']?[^"'>]*\byahoo_quoted\b/i,
 ];
 
-function cutHtmlHistory(html: string): string {
-  let cut = html.length;
-  for (const re of HTML_HISTORY_MARKERS) {
-    const m = re.exec(html);
-    if (m && m.index < cut) cut = m.index;
-  }
-  return html.slice(0, cut);
-}
-
 /**
- * Drop document wrappers (doctype, html, head, body): a quoted message can be
- * a whole HTML document nested inside a <blockquote>, and nested wrappers make
- * the converter lift its content out of the quote.
+ * One linear pass over the tags: cut at Outlook's history marker, and drop
+ * document wrappers (doctype, html, head, body): a quoted message can be a
+ * whole HTML document nested inside a <blockquote>, and nested wrappers make
+ * the converter lift its content out of the quote. (Whole-document regexes
+ * here were quadratic on malformed HTML.)
  */
-function unwrapDocuments(html: string): string {
-  return html
-    .replace(/<!doctype[^>]*>/gi, '')
-    .replace(/<head\b[\s\S]*?<\/head>/gi, '')
-    .replace(/<\/?(html|body)\b[^>]*>/gi, '');
+function prepareHtml(html: string): string {
+  const out: string[] = [];
+  let inHead = false;
+  let i = 0;
+  while (i < html.length) {
+    const lt = html.indexOf('<', i);
+    if (lt < 0) {
+      if (!inHead) out.push(html.slice(i));
+      break;
+    }
+    if (!inHead) out.push(html.slice(i, lt));
+    const gt = html.indexOf('>', lt + 1);
+    if (gt < 0) {
+      if (!inHead) out.push(html.slice(lt));
+      break;
+    }
+    const tag = html.slice(lt, Math.min(gt + 1, lt + 2000));
+    if (HTML_HISTORY_MARKERS.some(re => re.test(tag))) break;
+    const name = /^<\/?\s*([!a-z][a-z0-9-]*)/i.exec(tag)?.[1]?.toLowerCase();
+    if (name === 'head') inHead = tag[1] !== '/';
+    else if (name !== '!doctype' && name !== 'html' && name !== 'body' && !inHead) out.push(html.slice(lt, gt + 1));
+    i = gt + 1;
+  }
+  return out.join('');
 }
 
 function htmlToText(html: string): string {
-  return convert(unwrapDocuments(cutHtmlHistory(html)), {
+  return convert(prepareHtml(html), {
     wordwrap: false,
     selectors: [
       // Keep where a link goes ("my proposal [https://…]"), unless the text is the URL.

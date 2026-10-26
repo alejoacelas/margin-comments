@@ -27,6 +27,19 @@ describe('reply addresses', () => {
   });
 });
 
+describe('bareAddress limits', () => {
+  it('handles deeply nested comments in linear time, and refuses huge headers', async () => {
+    const { bareAddress } = await import('../../src/server/email/reply-token');
+    const t0 = performance.now();
+    expect(bareAddress('('.repeat(32000) + 'x' + ')'.repeat(32000) + ' <attacker@example.com>')).toBe('');
+    expect(bareAddress('('.repeat(900) + 'x' + ')'.repeat(900) + ' <a@example.com>')).toBe('a@example.com');
+    expect(bareAddress('(a (nested (comment)) here) Bob <b@example.com>')).toBe('b@example.com');
+    expect(bareAddress('"quoted \\" (not a comment" <c@example.com>')).toBe('c@example.com');
+    expect(bareAddress('((unbalanced) <d@example.com>')).toBe('');
+    expect(performance.now() - t0).toBeLessThan(500);
+  });
+});
+
 describe('bareAddress', () => {
   it('takes the real mailbox, never one hidden in a display name or comment', async () => {
     const { bareAddress } = await import('../../src/server/email/reply-token');
@@ -206,6 +219,13 @@ describe('extractReply', () => {
       extractReply(input, null);
       extractReply(null, `<p>${input}</p>`);
       expect(performance.now() - t0, input.slice(0, 20)).toBeLessThan(1500);
+    }
+  });
+  it('malformed HTML is processed in linear time', () => {
+    for (const html of ['<div '.repeat(16000), '<div style="'.repeat(16000), '<head '.repeat(16000), '<html '.repeat(16000), '<!doctype '.repeat(16000), '<div id="x" '.repeat(16000) + '>', '<'.repeat(80000)]) {
+      const t0 = performance.now();
+      extractReply(null, html);
+      expect(performance.now() - t0, html.slice(0, 15)).toBeLessThan(1500);
     }
   });
   it('keeps text below separator lines', () => {

@@ -21,7 +21,9 @@ Choices made while building this without supervision, with the reasoning.
   fuzzy quote matching (approx-string-match scored by prefix/suffix/position), which Apache
   Annotator lacks. Local changes are marked `margin-comments:` in the files.
 - **Selectors stored:** TextQuoteSelector (exact, prefix, suffix) + TextPositionSelector, plus
-  Hypothesis's RangeSelector as an extra hint.
+  Hypothesis's RangeSelector as an extra hint. Quote and context are taken from the rendered
+  text our matching uses (script/style excluded): selectors are stored and shown to everyone,
+  and Hypothesis's own context could include an adjacent inline `<script>`'s data.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
   `<script>/<style>/<noscript>/<template>`, so re-indentation, minification and `<br>`/block
   changes never break an anchor.

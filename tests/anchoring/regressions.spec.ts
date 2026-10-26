@@ -346,3 +346,32 @@ test('text placed directly in a shadow root (no element around it) can be commen
   expect(res).toEqual({ quote: 'This is the visible', anchored: 'This is the visible' });
 });
 
+test("a thread's stored context never includes an adjacent inline script's data", async ({ page }) => {
+  for (const body of [
+    // Nothing but the script within 32 characters after (or before) the passage.
+    `<main><p id="p">Passage to comment on.</p><script type="application/json">{"token":"0123456789abcdef"}</script></main>`,
+    `<main><script type="application/json">{"before":"secret-aaaa1111"}</script><p id="p">Passage to comment on.</p></main>`,
+  ]) {
+    await load(page, body);
+    const res = await page.evaluate(() => {
+      const mc = (window as any).__mc;
+      const p = document.getElementById('p')!;
+      const t = p.firstChild as Text;
+      const ranges = [
+        (() => { const r = document.createRange(); r.selectNodeContents(p); return r; })(),
+        (() => { const r = document.createRange(); r.setStart(t, 0); r.setEnd(t, t.length); return r; })(),
+        (() => { const r = document.createRange(); r.setStart(t, 8); r.setEnd(t, t.length); return r; })(),
+      ];
+      return ranges.map(r => {
+        const { selectors } = mc.describeRange(document.body, r);
+        return { json: JSON.stringify(selectors), anchored: !!mc.anchorSelectors(document.body, selectors) };
+      });
+    });
+    for (const r of res) {
+      expect(r.json).not.toContain('0123456789abcdef');
+      expect(r.json).not.toContain('secret-aaaa1111');
+      expect(r.anchored).toBe(true);
+    }
+  }
+});
+
