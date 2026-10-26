@@ -151,6 +151,12 @@ export class AnchorManager {
     return [...this.entries.values()].map(e => ({ id: e.id, state: e.state }));
   }
 
+  /** The layout changed (resize, responsive breakpoints): re-check which copies are visible. */
+  layoutChanged() {
+    this.layoutDirty = true;
+    this.schedule();
+  }
+
   /** Run a pass after `delay` (throttled); an earlier request replaces a later one. */
   schedule(delay = 0) {
     if (this.destroyed) return;

@@ -352,7 +352,7 @@ class MarginComments implements Actions {
       'resize',
       () => {
         this.onLayoutChange();
-        this.anchors.schedule(); // responsive layouts can hide/show copies of the text
+        this.anchors.layoutChanged(); // responsive layouts can hide/show copies of the text
       },
       { signal: this.abort.signal, passive: true },
     );
@@ -369,7 +369,10 @@ class MarginComments implements Actions {
     );
     // Layout can change without DOM mutations (images loading, fonts, CSS):
     // keep hit-testing and card positions in step.
-    const resize = new ResizeObserver(() => this.onLayoutChange());
+    const resize = new ResizeObserver(() => {
+      this.onLayoutChange();
+      this.anchors.layoutChanged();
+    });
     if (document.body) resize.observe(document.body);
     this.abort.signal.addEventListener('abort', () => resize.disconnect());
     // Re-attach our host if a framework wipes unknown nodes off <html>.
@@ -557,7 +560,7 @@ class MarginComments implements Actions {
   private async mutate(op: NewOp, draftKey?: string, draftText?: string) {
     if (draftKey) this.pauseDraftSave(draftKey);
     try {
-      await this.port.call('mutate', { op, draftKey, draftText });
+      await this.port.call('mutate', { op, draftKey, draftText, userId: this.store.state.user?.id, draftInstance: this.instanceId });
     } catch (err) {
       if (draftKey) this.flushDraft(this.slot(draftKey));
       throw err;
@@ -570,6 +573,8 @@ class MarginComments implements Actions {
   }
 
   private composerAttempt: { threadId: string; commentId: string; body: string } | null = null;
+  /** Identifies this page's editors, so drafts from other tabs aren't overwritten or deleted. */
+  private readonly instanceId = crypto.randomUUID();
 
   async createThread(body: string) {
     const c0 = this.store.state.ui.composer;
@@ -663,6 +668,7 @@ class MarginComments implements Actions {
       pageKeys: this.identity.keys,
       // Whose text this is, even if the account changes before it's saved.
       userId: this.store.state.user?.id,
+      instanceId: this.instanceId,
     };
     const slot = this.slot(key);
     const existing = this.draftTimers.get(slot);
@@ -718,7 +724,7 @@ class MarginComments implements Actions {
     const entry = this.draftTimers.get(slot);
     if (entry?.timer) clearTimeout(entry.timer);
     this.draftTimers.delete(slot);
-    void this.port.call('deleteDraft', { key }).catch(() => {});
+    void this.port.call('deleteDraft', { key, instanceId: this.instanceId }).catch(() => {});
   }
 
   resumeDraft(draft: Draft) {

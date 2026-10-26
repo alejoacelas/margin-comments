@@ -98,3 +98,16 @@ Three focused passes over commit `4ff358a`.
 | B3 | Daily-quota waits used up the retry budget | Fixed | Quota waits don't count as attempts; jobs give up after 3 days instead. `email.test.ts` "daily-quota waits…" |
 | C1 | A previous account's unsaved draft could show in the next account's editor | Fixed | Pending drafts keyed per account; lookups filtered by the current user |
 | C2 | Late mutation responses could sign out or feed data to a different (newer) session | Fixed | Deliveries and 401 handling only for the session that made the request |
+
+## Round 5 — full repository (2026-10-26)
+
+Three focused passes over commit after round 4.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Resizing back within 10 s left the highlight on a hidden copy | Fixed | Resize (window and body `ResizeObserver`) marks visibility checks due. `anchoring/regressions.spec.ts` "real viewport resizes…both ways" |
+| B1 | Google sign-in could take over an account through a reassigned non-Google email address | Fixed | Linking by email only when Google is authoritative (Gmail or matching `hd`); otherwise `email_in_use`; identities never replaced. `google-live.test.ts` "can't take over an email account…", "links…when authoritative…" |
+| B2 | Account merges broke earlier reply addresses and unsubscribe links | Fixed (by design change) | Merging removed entirely (see B1) |
+| C1 | A stale submission could be queued under a newly signed-in account | Fixed | Mutations carry the account they were typed under; the worker rejects mismatches and the text stays a draft |
+| C2 | Drafts typed in two tabs overwrote (or cancel-deleted) each other | Fixed | Drafts carry their tab instance; diverging text from another tab is kept aside; deletes are instance-scoped. e2e "reply drafts typed in two tabs both survive" |
+| C3 | Account merges stranded locally queued work | Fixed (by design change) | No merges (B1) |

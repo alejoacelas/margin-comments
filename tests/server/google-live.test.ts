@@ -16,7 +16,9 @@ afterEach(async () => {
 });
 
 /** A fake Google: token endpoint + userinfo, configurable verified flag. */
-async function fakeGoogle(profile: { sub: string; email: string; email_verified: boolean; name: string }) {
+type Profile = { sub: string; email: string; email_verified: boolean; name: string; hd?: string };
+
+async function fakeGoogle(profile: Profile) {
   const seen: Array<Record<string, string>> = [];
   google = createServer((req, res) => {
     let body = '';
@@ -43,7 +45,7 @@ async function fakeGoogle(profile: { sub: string; email: string; email_verified:
 const EXT = 'abcdefghijklmnopabcdefghijklmnop';
 const REDIRECT = `https://${EXT}.chromiumapp.org/`;
 
-async function googleApp(profile: { sub: string; email: string; email_verified: boolean; name: string }) {
+async function googleApp(profile: Profile) {
   const g = await fakeGoogle(profile);
   const base = loadConfig();
   t = await makeApp({
@@ -84,52 +86,52 @@ describe('Google sign-in', () => {
     expect(replay.statusCode).toBe(400);
   });
 
-  it('a Google account keeps its user when its email changes', async () => {
-    const profile = { sub: 'g-stable', email: 'old@example.com', email_verified: true, name: 'Pat' };
+  async function signInGoogle() {
+    const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });
+    const state = new URL(start.headers.location as string).searchParams.get('state')!;
+    const cb = await t!.app.inject({ method: 'GET', url: `/api/auth/google/callback?code=abc&state=${encodeURIComponent(state)}` });
+    const hash = new URLSearchParams(new URL(cb.headers.location as string).hash.slice(1));
+    const token = hash.get('session');
+    if (!token) return { error: hash.get('error') };
+    return { user: (await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(token) })).json().user, token };
+  }
+
+  it('a Google account keeps its user when its (Workspace) email changes', async () => {
+    const profile: Profile = { sub: 'g-stable', email: 'old@corp.example', email_verified: true, name: 'Pat', hd: 'corp.example' };
     await googleApp(profile);
-    const signInGoogle = async () => {
-      const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });
-      const state = new URL(start.headers.location as string).searchParams.get('state')!;
-      const cb = await t!.app.inject({ method: 'GET', url: `/api/auth/google/callback?code=abc&state=${encodeURIComponent(state)}` });
-      const token = new URLSearchParams(new URL(cb.headers.location as string).hash.slice(1)).get('session')!;
-      return (await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(token) })).json().user;
-    };
     const first = await signInGoogle();
-    profile.email = 'new@example.com';
+    profile.email = 'new@corp.example';
     const second = await signInGoogle();
-    expect(second.id).toBe(first.id);
-    expect(second.email).toBe('new@example.com');
+    expect(second.user.id).toBe(first.user.id);
+    expect(second.user.email).toBe('new@corp.example');
   });
 
-  it('a Google email change onto an existing email account merges the two, keeping all work', async () => {
-    const profile = { sub: 'g-merge', email: 'pat@example.com', email_verified: true, name: 'Pat' };
+  it("can't take over an email account through a Google login that isn't authoritative for the address", async () => {
+    // Bob owns a (non-Google) mailbox now and signed up with it.
+    const profile: Profile = { sub: 'g-alice', email: 'shared@company.example', email_verified: true, name: 'Alice' };
     await googleApp(profile);
-    const signInGoogle = async () => {
-      const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });
-      const state = new URL(start.headers.location as string).searchParams.get('state')!;
-      const cb = await t!.app.inject({ method: 'GET', url: `/api/auth/google/callback?code=abc&state=${encodeURIComponent(state)}` });
-      return new URLSearchParams(new URL(cb.headers.location as string).hash.slice(1)).get('session')!;
-    };
-    const g = await signInGoogle();
-    const gUser = (await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(g) })).json().user;
-    const p1 = threadPayload();
-    await t!.app.inject({ method: 'POST', url: '/api/threads', headers: auth(g), payload: p1 });
-    const e = await signIn(t!, 'pat.work@example.com');
-    const p2 = threadPayload();
-    await t!.app.inject({ method: 'POST', url: '/api/threads', headers: auth(e.token), payload: p2 });
+    const bob = await signIn(t!, 'shared@company.example');
+    // Alice's old Google account still lists that address as verified.
+    const r = await signInGoogle();
+    expect(r.error).toBe('email_in_use');
+    expect((await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(bob.token) })).json().user.email).toBe('shared@company.example');
+    // And an email change onto Bob's address doesn't move or merge anything.
+    profile.email = 'alice.personal@elsewhere.example';
+    const alice = await signInGoogle();
+    profile.email = 'shared@company.example';
+    const again = await signInGoogle();
+    expect(again.user.id).toBe(alice.user.id);
+    expect(again.user.email).toBe('alice.personal@elsewhere.example');
+  });
 
-    profile.email = 'pat.work@example.com';
-    const g2 = await signInGoogle();
-    const me = (await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(g2) })).json().user;
-    expect(me.id).toBe(gUser.id);
-    expect(me.email).toBe('pat.work@example.com');
-    // Both threads now belong to the same account, which can edit both.
-    for (const p of [p1, p2]) {
-      const r = await t!.app.inject({ method: 'PATCH', url: `/api/comments/${p.comment.id}`, headers: auth(g2), payload: { body: 'still mine' } });
-      expect(r.statusCode).toBe(200);
-    }
-    // The old email session now acts as the merged account too.
-    expect((await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(e.token) })).json().user.id).toBe(gUser.id);
+  it('links Google to an existing account when Google is authoritative (Gmail), but never replaces an identity', async () => {
+    const profile: Profile = { sub: 'g-gmail', email: 'sam@gmail.com', email_verified: true, name: 'Sam' };
+    await googleApp(profile);
+    const emailAccount = await signIn(t!, 'sam@gmail.com');
+    const linked = await signInGoogle();
+    expect(linked.user.id).toBe(emailAccount.user.id);
+    profile.sub = 'g-other';
+    expect((await signInGoogle()).error).toBe('email_in_use');
   });
 
   it('refuses unverified Google emails', async () => {

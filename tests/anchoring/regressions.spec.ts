@@ -111,3 +111,30 @@ test('text hidden with visibility:hidden does not count as visible', async ({ pa
   });
   expect(where).toBe('b');
 });
+
+test('real viewport resizes move the highlight between responsive copies, both ways', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await load(
+    page,
+    `<style>.mobile{display:none} @media (max-width: 800px) { .desktop{display:none} .mobile{display:block} }</style>
+     <div class="desktop"><p id="d">Responsive passage rendered once per layout for every reader.</p></div>
+     <div class="mobile"><p id="m">Responsive passage rendered once per layout for every reader.</p></div>`,
+  );
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('d')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    // What the content script does on resize.
+    window.addEventListener('resize', () => m.layoutChanged());
+    (window as any).__m = m;
+  });
+  const where = () => page.evaluate(() => ((window as any).__m.get('t').range?.startContainer.parentElement as HTMLElement | undefined)?.id);
+  await page.setViewportSize({ width: 700, height: 800 });
+  await expect.poll(where, { timeout: 10_000 }).toBe('m');
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await expect.poll(where, { timeout: 10_000 }).toBe('d');
+});

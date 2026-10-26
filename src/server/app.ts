@@ -10,7 +10,7 @@ import { type DB, openDb, tx } from './db';
 import { processInbound, verifySvix } from './email/inbound';
 import { type EmailProvider, OutboxProvider, ResendProvider, RetryableEmailError } from './email/provider';
 import { EmailQueue } from './email/queue';
-import { consumeState, exchangeCode, isAllowedExtensionRedirect, startGoogle } from './google';
+import { consumeState, exchangeCode, googleIsAuthoritative, isAllowedExtensionRedirect, startGoogle } from './google';
 import { LiveHub } from './live';
 import { checkUnsubscribeSig, notificationStillWanted, notifyNewComment, queueLoginEmail } from './notifications';
 import { homePage, messagePage, outboxPage, PAGE_CSP, unsubscribePage, verifyPage } from './pages';
@@ -37,6 +37,7 @@ import {
   recentLoginCount,
   startEmailLogin,
   updateUser,
+  upsertGoogleUser,
   upsertUser,
   type UserRow,
   userForToken,
@@ -307,8 +308,14 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
       const profile = await exchangeCode(config, q.code, state.verifier);
       const email = normalizeEmail(profile.email);
       if (!email) return fail('invalid_email');
-      const user = upsertUser(db, email, { name: profile.name, googleSub: profile.sub });
-      const token = createSession(db, user.id, config.sessionDays);
+      const result = upsertGoogleUser(db, {
+        sub: profile.sub,
+        email,
+        name: profile.name,
+        authoritative: googleIsAuthoritative(email, profile.hd),
+      });
+      if (!result.ok) return fail(result.error);
+      const token = createSession(db, result.user.id, config.sessionDays);
       return reply.redirect(`${state.redirectUri}#session=${encodeURIComponent(token)}`);
     } catch (err) {
       req.log.warn({ err: (err as Error).message }, 'google sign-in failed');

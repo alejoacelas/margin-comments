@@ -67,7 +67,14 @@ export function consumeState(db: DB, state: string): { redirectUri: string; veri
   return { redirectUri: row.redirect_uri, verifier: row.code_verifier };
 }
 
-export type GoogleProfile = { sub: string; email: string; name: string | null };
+export type GoogleProfile = { sub: string; email: string; name: string | null; hd: string | null };
+
+/** Is Google the authority for this address? (Gmail, or a matching Workspace domain.) */
+export function googleIsAuthoritative(email: string, hd: string | null): boolean {
+  const domain = email.split('@')[1]?.toLowerCase() ?? '';
+  if (domain === 'gmail.com' || domain === 'googlemail.com') return true;
+  return !!hd && hd.toLowerCase() === domain;
+}
 
 export async function exchangeCode(config: Config, code: string, verifier: string): Promise<GoogleProfile> {
   const tokenRes = await fetch(config.google.tokenUrl, {
@@ -91,8 +98,8 @@ export async function exchangeCode(config: Config, code: string, verifier: strin
     signal: AbortSignal.timeout(15_000),
   });
   if (!infoRes.ok) throw new Error(`userinfo failed (${infoRes.status})`);
-  const info = (await infoRes.json()) as { sub?: string; email?: string; email_verified?: boolean | string; name?: string };
+  const info = (await infoRes.json()) as { sub?: string; email?: string; email_verified?: boolean | string; name?: string; hd?: string };
   const verified = info.email_verified === true || info.email_verified === 'true';
   if (!info.sub || !info.email || !verified) throw new Error('Google account email is not verified');
-  return { sub: info.sub, email: info.email, name: info.name ?? null };
+  return { sub: info.sub, email: info.email, name: info.name ?? null, hd: typeof info.hd === 'string' ? info.hd : null };
 }

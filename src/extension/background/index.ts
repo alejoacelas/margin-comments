@@ -267,7 +267,16 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     const final = await chrome.identity.launchWebAuthFlow({ url, interactive: true });
     const hash = new URLSearchParams(new URL(final ?? 'about:blank').hash.slice(1));
     const token = hash.get('session');
-    if (!token) throw new Error(hash.get('error') === 'google_failed' ? 'Google sign-in failed' : 'Sign-in was cancelled');
+    if (!token) {
+      const error = hash.get('error');
+      throw new Error(
+        error === 'email_in_use'
+          ? 'That email already has an account. Sign in with the email code instead.'
+          : error === 'google_failed'
+            ? 'Google sign-in failed'
+            : 'Sign-in was cancelled',
+      );
+    }
     const { user } = await api<{ user: Me }>('GET', '/api/me', { token });
     await signIn(token, user);
     return { user };
@@ -289,8 +298,10 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     broadcastState();
     return { user };
   },
-  async mutate({ op, draftKey, draftText }) {
+  async mutate({ op, draftKey, draftText, userId, draftInstance }) {
     if (!session) throw new Error('Sign in first');
+    // Never attribute text to an account other than the one it was typed under.
+    if (userId && userId !== session.user.id) throw new Error("You're signed in as a different account now. Your text is kept as a draft.");
     const full = {
       ...op,
       opId: crypto.randomUUID(),
@@ -303,7 +314,11 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     // Drop the draft only if it's the text that was submitted: another tab may
     // have saved different text under the same key since.
     const slot = draftKey ? draftSlot(draftKey) : null;
-    const draftConsumed = !!slot && !!drafts[slot] && (draftText === undefined || drafts[slot].text.trim() === draftText.trim());
+    const stored = slot ? drafts[slot] : undefined;
+    const draftConsumed =
+      !!stored &&
+      (draftText === undefined || stored.text.trim() === draftText.trim()) &&
+      (!draftInstance || !stored.instanceId || stored.instanceId === draftInstance || stored.text.trim() === (draftText ?? '').trim());
     if (draftConsumed) delete drafts[slot!];
     // The op is on disk before we acknowledge it: closing the tab now loses nothing.
     await persist(draftConsumed ? ['outbox', 'drafts'] : ['outbox']);
@@ -346,16 +361,35 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     const owner = draft.userId ?? session?.user.id;
     const slot = draftSlot(draft.key, owner);
     if (!slot || !owner) throw new Error('Sign in first');
-    if (!draft.text.trim()) delete drafts[slot];
-    else drafts[slot] = { ...draft, userId: owner, updatedAt: Date.now() };
+    const existing = drafts[slot];
+    // Another tab wrote different text under the same key: keep theirs aside
+    // (listed under "Unsent drafts") instead of overwriting it.
+    if (
+      existing &&
+      existing.instanceId &&
+      draft.instanceId &&
+      existing.instanceId !== draft.instanceId &&
+      existing.text.trim() &&
+      existing.text.trim() !== draft.text.trim() &&
+      !draft.text.trim().startsWith(existing.text.trim())
+    ) {
+      const asideKey = `${existing.key}#${existing.instanceId}`;
+      drafts[draftSlot(asideKey, owner)!] = { ...existing, key: asideKey, conflict: true };
+    }
+    if (!draft.text.trim()) {
+      if (!existing || !existing.instanceId || existing.instanceId === draft.instanceId) delete drafts[slot];
+    } else drafts[slot] = { ...draft, userId: owner, updatedAt: Date.now() };
     pruneDrafts();
     await persist(['drafts']);
     broadcastState();
     return { ok: true as const };
   },
-  async deleteDraft({ key }) {
+  async deleteDraft({ key, instanceId }) {
     const slot = draftSlot(key);
-    if (slot && drafts[slot]) {
+    // Only the tab that wrote a draft (or anyone, for drafts without an
+    // owner tab, e.g. ones kept aside) can delete it.
+    const stored = slot ? drafts[slot] : undefined;
+    if (slot && stored && (!instanceId || !stored.instanceId || stored.instanceId === instanceId || stored.conflict)) {
       delete drafts[slot];
       await persist(['drafts']);
       broadcastState();

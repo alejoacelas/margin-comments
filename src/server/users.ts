@@ -52,53 +52,65 @@ export function getUserByEmail(db: DB, email: string): UserRow | null {
   return (db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined) ?? null;
 }
 
-export function upsertUser(db: DB, email: string, opts: { name?: string | null; googleSub?: string | null } = {}): UserRow {
+/** Find or create the account for a verified email address (email sign-in). */
+export function upsertUser(db: DB, email: string, opts: { name?: string | null } = {}): UserRow {
   return tx(db, () => {
-    if (opts.googleSub) {
-      // A Google identity is its stable subject; the email can change.
-      const bySub = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(opts.googleSub) as UserRow | undefined;
-      if (bySub) {
-        if (bySub.email !== email) {
-          const taken = getUserByEmail(db, email);
-          if (!taken) {
-            db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, bySub.id);
-          } else {
-            // The new address already has its own (email sign-in) account.
-            // Google verified the same mailbox, so it's the same person:
-            // merge that account into the Google one, keeping all work.
-            mergeUsers(db, taken.id, bySub.id);
-            db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, bySub.id);
-          }
-        }
-        return getUser(db, bySub.id)!;
-      }
-    }
     const existing = getUserByEmail(db, email);
-    if (existing) {
-      if (opts.googleSub && existing.google_sub !== opts.googleSub) {
-        db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(opts.googleSub, existing.id);
-      }
-      return getUser(db, existing.id)!;
-    }
-    const id = newUserId();
-    const name = cleanName(opts.name) ?? defaultName(email);
-    db.prepare(
-      'INSERT INTO users (id, email, name, notify_email, google_sub, created_at) VALUES (?, ?, ?, 1, ?, ?)',
-    ).run(id, email, name, opts.googleSub ?? null, nowIso());
-    return getUser(db, id)!;
+    if (existing) return existing;
+    return createUser(db, email, opts.name ?? null, null);
   });
 }
 
-/** Move everything owned by `fromId` to `intoId`, then delete `fromId` (inside a transaction). */
-export function mergeUsers(db: DB, fromId: string, intoId: string) {
-  if (fromId === intoId) return;
-  db.prepare('UPDATE comments SET author_id = ? WHERE author_id = ?').run(intoId, fromId);
-  db.prepare('UPDATE threads SET author_id = ? WHERE author_id = ?').run(intoId, fromId);
-  db.prepare('UPDATE threads SET resolved_by = ? WHERE resolved_by = ?').run(intoId, fromId);
-  db.prepare('INSERT OR IGNORE INTO group_members (group_id, user_id, role, created_at) SELECT group_id, ?, role, created_at FROM group_members WHERE user_id = ?').run(intoId, fromId);
-  db.prepare('DELETE FROM group_members WHERE user_id = ?').run(fromId);
-  db.prepare('UPDATE sessions SET user_id = ? WHERE user_id = ?').run(intoId, fromId);
-  db.prepare('DELETE FROM users WHERE id = ?').run(fromId);
+function createUser(db: DB, email: string, name: string | null, googleSub: string | null): UserRow {
+  const id = newUserId();
+  db.prepare('INSERT INTO users (id, email, name, notify_email, google_sub, created_at) VALUES (?, ?, ?, 1, ?, ?)').run(
+    id,
+    email,
+    cleanName(name) ?? defaultName(email),
+    googleSub,
+    nowIso(),
+  );
+  return getUser(db, id)!;
+}
+
+export type GoogleIdentity = {
+  sub: string;
+  email: string;
+  name: string | null;
+  /**
+   * Google is the authority for this address (a Gmail address, or a Workspace
+   * account whose `hd` matches the domain). For other addresses Google's
+   * "verified" only means the address was verified once, not that this
+   * Google account still owns the mailbox.
+   */
+  authoritative: boolean;
+};
+
+export type GoogleResult = { ok: true; user: UserRow } | { ok: false; error: 'email_in_use' };
+
+/**
+ * Sign-in with Google. The stable subject identifies the account; an email
+ * address only links to an existing account when Google is authoritative for
+ * it, and an account's Google identity is never replaced or merged away.
+ */
+export function upsertGoogleUser(db: DB, g: GoogleIdentity): GoogleResult {
+  return tx(db, () => {
+    const bySub = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(g.sub) as UserRow | undefined;
+    if (bySub) {
+      // Follow an email change only to a free address Google vouches for.
+      if (bySub.email !== g.email && g.authoritative && !getUserByEmail(db, g.email)) {
+        db.prepare('UPDATE users SET email = ? WHERE id = ?').run(g.email, bySub.id);
+      }
+      return { ok: true, user: getUser(db, bySub.id)! } as const;
+    }
+    const existing = getUserByEmail(db, g.email);
+    if (existing) {
+      if (existing.google_sub || !g.authoritative) return { ok: false, error: 'email_in_use' } as const;
+      db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(g.sub, existing.id);
+      return { ok: true, user: getUser(db, existing.id)! } as const;
+    }
+    return { ok: true, user: createUser(db, g.email, g.name, g.sub) } as const;
+  });
 }
 
 export function updateUser(db: DB, id: string, patch: { name?: string; notifyEmail?: boolean }): UserRow {

@@ -263,7 +263,9 @@ function DraftRow({ draft, actions, orphaned }: { draft: Draft; actions: Actions
         </div>
       ) : null}
       <div class="row-first">{draft.text}</div>
-      {orphaned ? <div class="c-status">The comment this was for was deleted.</div> : null}
+      {orphaned ? (
+        <div class="c-status">{draft.conflict ? 'Saved from another tab.' : 'The comment this was for was deleted.'}</div>
+      ) : null}
       <div class="row-end" style={{ justifyContent: 'flex-start' }}>
         {orphaned ? null : (
           <button class="link-btn" onClick={() => actions.resumeDraft(draft)}>
@@ -319,7 +321,7 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
     if (!ra || !rb) return 0;
     return ra.top + window.scrollY - (rb.top + window.scrollY) || ra.left - rb.left;
   });
-  const newDrafts = state.drafts.filter(d => d.key.startsWith('new:') && d.anchor && d.text.trim());
+  const newDrafts = state.drafts.filter(d => d.key.startsWith('new:') && d.anchor && d.text.trim() && !d.conflict);
   // Changes that failed for good and whose thread is gone (e.g. deleted by its
   // author while you were offline): keep the text visible so it isn't lost.
   const visibleIds = new Set(threads.map(t => t.id));
@@ -334,6 +336,7 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
   const orphanDrafts = state.loaded
     ? state.drafts.filter(d => {
         if (!d.text.trim()) return false;
+        if (d.conflict) return true;
         if (d.key.startsWith('reply:')) return !visibleIds.has(d.key.slice(6));
         if (d.key.startsWith('edit:')) return !commentIds.has(d.key.slice(5));
         return false;

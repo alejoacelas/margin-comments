@@ -266,3 +266,33 @@ test('a comment made right after SPA navigation is saved for the new page', asyn
   await a.evaluate(r => (window as any).navigate(r), route);
   await expect(a.locator('[data-testid=sidebar-thread]')).toContainText('On route two', { timeout: 10_000 });
 });
+
+test('reply drafts typed in two tabs both survive', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Open annotation standard', 'Two tabs');
+  await a.keyboard.press('Escape');
+  const open = async (p: import('@playwright/test').Page) => {
+    await alice.openSidebar(p);
+    await p.locator('[data-testid=sidebar-thread]').click();
+    return p.locator('[data-testid=sidebar-thread] [data-testid=reply-input]');
+  };
+  const one = await open(a);
+  await one.fill('Reply typed in tab one');
+  await a.waitForTimeout(700);
+  const b = await alice.open(path);
+  const two = await open(b);
+  await two.fill('');
+  await two.pressSequentially('Different reply from tab two');
+  await b.waitForTimeout(700);
+  await a.close();
+  await b.close();
+  const c = await alice.open(path);
+  const box = await open(c);
+  // One draft comes back in the editor, the other is kept under "Unsent drafts".
+  const shown = await box.inputValue();
+  expect(['Reply typed in tab one', 'Different reply from tab two']).toContain(shown);
+  const other = shown === 'Reply typed in tab one' ? 'Different reply from tab two' : 'Reply typed in tab one';
+  await expect(c.locator('[data-testid=draft-row]')).toContainText(other);
+});
