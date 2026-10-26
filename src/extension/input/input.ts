@@ -18,6 +18,8 @@ let field: HTMLTextAreaElement | HTMLInputElement | null = null;
 let lastHeight = 0;
 /** Attached to the content script (we got `init` on the current port). */
 let attached = false;
+/** Told the field is gone (sent, cancelled, or replaced by another copy): stop reconnecting. */
+let done = false;
 /** Enter/Escape pressed while the worker was restarting; sent once re-attached. */
 let held: { t: 'event'; type: InputEventType; value: string }[] = [];
 let port = connect();
@@ -188,7 +190,9 @@ function connect(): chrome.runtime.Port {
   const p = chrome.runtime.connect({ name: 'mc-input' });
   p.onMessage.addListener((msg: { t: 'init'; init: InputInit } | { t: 'cmd'; cmd: InputCommand } | { t: 'closed' }) => {
     if (msg.t === 'closed') {
-      // The field is gone from the page (sent, cancelled, page closed).
+      // The field is gone from the page (sent, cancelled), or another copy of
+      // it took over.
+      done = true;
       if (standalone) window.close();
       return;
     }
@@ -206,6 +210,7 @@ function connect(): chrome.runtime.Port {
   p.onDisconnect.addListener(() => {
     void chrome.runtime.lastError;
     attached = false;
+    if (done) return;
     setTimeout(() => {
       try {
         port = connect();

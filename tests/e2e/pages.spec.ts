@@ -227,3 +227,44 @@ test("works on sandboxed pages, where our frames can't run: you type in an exten
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Typed in a window', 'An unfinished reply, finished']);
   expect(await a.evaluate(() => (window as any).__keys)).toBe('');
 });
+
+test('on sandboxed pages, an input window survives a service worker restart and stays the only one', async ({ alice }) => {
+  const path = uniquePath('article', { sandbox: true });
+  const a = await alice.open(path);
+  await alice.signInHeadless();
+  await a.reload();
+  await expect(a.locator('[data-margin-comments]')).toHaveCount(1);
+  await selectText(a, 'Marginalia record a conversation');
+  await a.locator('[data-testid=adder]').click();
+  const [composer] = await Promise.all([alice.context.waitForEvent('page'), a.locator('[data-testid=composer-input-window]').click()]);
+  await composer.locator('[data-testid=composer-input]').fill('Thread');
+  await composer.locator('[data-testid=composer-input]').press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Thread']);
+  const [win] = await Promise.all([alice.context.waitForEvent('page'), a.locator('[data-testid=reply-input-window]').click()]);
+  const box = win.locator('[data-testid=reply-input]');
+  await box.fill('Started before');
+  await expect(a.locator('[data-testid=reply-input-window]')).toHaveText('Continue typing');
+  // The worker restarts (Chrome stops idle workers); the window reconnects.
+  await alice.sw.evaluate(() => ((globalThis as any).__marker = 1));
+  const cdp = await alice.context.newCDPSession(a);
+  const { targetInfos } = await cdp.send('Target.getTargets');
+  await cdp.send('Target.closeTarget', { targetId: targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/background.js'))!.targetId });
+  await expect
+    .poll(async () => {
+      const w = alice.context.serviceWorkers().find(x => x.url().endsWith('/background.js'));
+      return w ? await w.evaluate(() => (globalThis as any).__marker ?? 'fresh').catch(() => 'gone') : 'none';
+    })
+    .toBe('fresh');
+  await a.waitForTimeout(1500);
+  // "Continue typing" brings back the same window instead of opening another.
+  const pages = alice.context.pages().length;
+  await a.locator('[data-testid=reply-input-window]').click();
+  await a.waitForTimeout(1000);
+  expect(alice.context.pages().length).toBe(pages);
+  expect(win.isClosed()).toBe(false);
+  await box.press('End');
+  await box.pressSequentially(' and finished after');
+  await box.press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Thread', 'Started before and finished after']);
+});
+

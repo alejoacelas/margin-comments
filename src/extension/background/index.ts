@@ -244,16 +244,34 @@ function attachFrame(sid: string, frame: chrome.runtime.Port) {
     return;
   }
   waitingFrames.delete(sid);
+  if (session.frame && session.frame !== frame) {
+    // One place to type per field: a superseded copy (its text already
+    // reached us) is told it's done, and its window closes.
+    try {
+      session.frame.postMessage({ t: 'closed' });
+      session.frame.disconnect();
+    } catch {
+      // gone already
+    }
+  }
   session.frame = frame;
+  // A field in its own window (also after a worker restart, which forgets
+  // windows): remember it, so "Continue typing" focuses it, not a second one.
+  if (frame.sender?.url?.includes('?window=') && frame.sender.tab?.windowId !== undefined) session.windowId = frame.sender.tab.windowId;
   frame.postMessage({ t: 'init', init: session.init });
   for (const cmd of session.queued.splice(0)) frame.postMessage({ t: 'cmd', cmd });
 }
 
-/** End a field's session; a field in its own window closes that window. */
-function endInput(sid: string, session: InputSession) {
+/**
+ * End a field's session; a field in its own window closes that window.
+ * `final`: the field is gone for good (sent, cancelled), so its frame stops
+ * reconnecting; otherwise (the page's connection dropped, e.g. into the
+ * back/forward cache) frames reconnect and re-attach if the page comes back.
+ */
+function endInput(sid: string, session: InputSession, final: boolean) {
   inputSessions.delete(sid);
   try {
-    session.frame?.postMessage({ t: 'closed' });
+    if (final) session.frame?.postMessage({ t: 'closed' });
     session.frame?.disconnect();
   } catch {
     // gone already
@@ -262,7 +280,7 @@ function endInput(sid: string, session: InputSession) {
 }
 
 function closeInputs(owner: PortInfo) {
-  for (const [sid, session] of inputSessions) if (session.owner === owner) endInput(sid, session);
+  for (const [sid, session] of inputSessions) if (session.owner === owner) endInput(sid, session, false);
 }
 
 chrome.runtime.onConnect.addListener(port => {
@@ -531,7 +549,7 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
   },
   async inputClose({ sid }, info) {
     const session = inputSessions.get(sid);
-    if (session && session.owner === info) endInput(sid, session);
+    if (session && session.owner === info) endInput(sid, session, true);
     return { ok: true as const };
   },
   async inputWindow({ sid }, info) {

@@ -233,3 +233,11 @@ Reviewers B and C found nothing material.
 |---|---------|---------|------------|
 | A1 | A field reopened in a new extension window (sandboxed pages) started from its initial text, not what had been typed, so continuing could overwrite the saved draft | Fixed | The worker keeps each session's current text (from the field's input and our `set` commands) and starts new windows from it. The sandboxed-page e2e now closes a window mid-reply, reopens it and finishes the reply; verified to fail without the fix |
 
+## Round 16 — full repository (2026-10-26)
+
+Reviewers A and B found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| C1 | After a worker restart, "Continue typing" (sandboxed pages) opened a second input window, and typing in the first was silently dropped | Fixed | The worker recovers a reconnecting window's id from the port's sender, so it focuses that window; a field has one live copy, and a superseded copy is told it's closed (and stops reconnecting). Only an explicit close is final, so in-page frames still re-attach after the back/forward cache. e2e "on sandboxed pages, an input window survives a service worker restart and stays the only one"; verified to fail without the fix |
+
