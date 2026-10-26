@@ -141,6 +141,8 @@ test('production: comment on real sites without breaking them', async () => {
           r.setEnd(n, Math.min(n.data.length, n.data.search(/\S/) + 40));
           const rect = r.getBoundingClientRect();
           if (rect.width === 0 || rect.top < 0) continue;
+          // Text a reader can actually see (visibility:hidden keeps its box).
+          if (!n.parentElement!.checkVisibility({ visibilityProperty: true } as CheckVisibilityOptions)) continue;
           n.parentElement!.scrollIntoView({ block: 'center' });
           document.getSelection()!.removeAllRanges();
           document.getSelection()!.addRange(r);
@@ -151,6 +153,7 @@ test('production: comment on real sites without breaking them', async () => {
       });
       expect(ok, `selectable text on ${url}`).toBe(true);
       await page.locator('[data-testid=adder]').click();
+      await expect(page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]'), `composer on ${url}`).toBeVisible({ timeout: 10_000 });
       await page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill(`Smoke on ${url}`);
       await page.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').press('Enter');
       await expect(page.locator('[data-testid=thread-card]').getByText('Saving…')).toHaveCount(0, { timeout: 15_000 });
