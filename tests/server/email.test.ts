@@ -130,6 +130,34 @@ describe('extractReply', () => {
       expect(extractReply(reply, null), JSON.stringify(sep)).toBe('Confirmed, Friday works.');
     }
   });
+  it('an HTML-only Outlook reply quoting our notification posts only the new text', async () => {
+    const { notificationEmail } = await import('../../src/server/email/templates');
+    const n = notificationEmail({
+      threadId: 't1',
+      pageTitle: 'A page',
+      pageUrl: 'https://example.com/a',
+      threadLink: 'https://example.com/a#margin-comments=t1',
+      quote: 'The anchored sentence',
+      replyAuthor: 'Bob',
+      replyBody: 'Can we ship on Friday?',
+      previous: { author: 'Alice', body: 'An earlier comment' },
+      recipientStartedThread: true,
+      unsubscribeLink: 'https://mc.test/unsubscribe?u=1&s=2',
+      canReplyByEmail: true,
+    });
+    const outlookWeb =
+      '<html><body><div dir="ltr">Yes, Friday works.</div><div id="appendonsend"></div><hr style="display:inline-block;width:98%" tabindex="-1">' +
+      '<div id="divRplyFwdMsg" dir="ltr"><font face="Calibri"><b>From:</b> Margin Comments &lt;notifications@mail.test&gt;<br><b>Sent:</b> Monday, October 26, 2026 3:00 PM<br><b>To:</b> Alice<br><b>Subject:</b> hi</font><div>&nbsp;</div></div>' +
+      `<div>${n.html}</div></body></html>`;
+    const outlookDesktop =
+      '<html><body><div class="WordSection1"><p class="MsoNormal">Yes, Friday works.</p><div style="border:none;border-top:solid #E1E1E1 1.0pt;padding:3.0pt 0in 0in 0in">' +
+      '<p class="MsoNormal"><b>From:</b> Margin Comments<br><b>Sent:</b> Monday<br><b>To:</b> Alice</p></div>' +
+      `${n.html}</div></body></html>`;
+    for (const html of [outlookWeb, outlookDesktop]) {
+      const out = extractReply(null, html);
+      expect(out).toBe('Yes, Friday works.');
+    }
+  });
   it('returns empty for a quote-only reply', () => {
     expect(extractReply('\n\nOn Mon, Oct 26, 2026 Margin <x@y.z> wrote:\n> hi', null)).toBe('');
   });

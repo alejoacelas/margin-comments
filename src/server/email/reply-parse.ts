@@ -46,8 +46,33 @@ function stripSignOff(text: string): string {
   return text;
 }
 
+// Where a client's quoted history starts in HTML (Outlook web/desktop/new,
+// Apple Mail, Yahoo, Thunderbird): everything from there on is old content.
+// Outlook's history isn't inside one element, so skipping the header element
+// alone would leave the previous message (our notification) behind.
+const HTML_HISTORY_MARKERS: RegExp[] = [
+  /<div[^>]*\bid=["']?appendonsend\b/i,
+  /<div[^>]*\bid=["']?divRplyFwdMsg\b/i,
+  /<hr[^>]*\bid=["']?stopSpelling\b/i,
+  /<div[^>]*\bid=["']?mail-editor-reference-message-container\b/i,
+  /<div[^>]*\bclass=["']?[^"'>]*\bOutlookMessageHeader\b/i,
+  /<div[^>]*style=["'][^"']*border-top:\s*solid\s+#E1E1E1/i,
+  /<blockquote[^>]*\btype=["']?cite\b/i,
+  /<div[^>]*\bclass=["']?[^"'>]*\byahoo_quoted\b/i,
+  /<div[^>]*\bclass=["']?[^"'>]*\bmoz-cite-prefix\b/i,
+];
+
+function cutHtmlHistory(html: string): string {
+  let cut = html.length;
+  for (const re of HTML_HISTORY_MARKERS) {
+    const m = re.exec(html);
+    if (m && m.index < cut) cut = m.index;
+  }
+  return html.slice(0, cut);
+}
+
 function htmlToText(html: string): string {
-  return convert(html, {
+  return convert(cutHtmlHistory(html), {
     wordwrap: false,
     selectors: [
       { selector: 'a', options: { ignoreHref: true } },
