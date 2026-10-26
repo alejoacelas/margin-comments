@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Me } from '../../../shared/types';
-import type { Draft } from '../../messages';
+import type { Draft, Op } from '../../messages';
 import { hueIndexFor, OTHER_HUES } from '../highlights';
 import { isMine, type State, type Store, useStore, viewThreads, type ViewThread } from '../store';
 import type { Actions, AnchorBox } from './actions';
@@ -269,6 +269,29 @@ function DraftRow({ draft, actions }: { draft: Draft; actions: Actions }) {
   );
 }
 
+function StrandedRow({ op, actions }: { op: Op; actions: Actions }) {
+  const text = op.kind === 'createThread' ? op.payload.comment.body : op.kind === 'addComment' || op.kind === 'editComment' ? op.body : '';
+  return (
+    <div class="row" data-testid="stranded-row">
+      <div class="row-first" style={{ whiteSpace: 'pre-wrap' }}>
+        {text}
+      </div>
+      <div class="c-status failed">{op.error ?? 'Not saved'}</div>
+      <div class="row-end" style={{ justifyContent: 'flex-start' }}>
+        <button class="link-btn" onClick={() => actions.copy(text)}>
+          Copy text
+        </button>
+        <button class="link-btn muted" onClick={() => actions.retryOp(op.opId)}>
+          Retry
+        </button>
+        <button class="link-btn muted" onClick={() => actions.discardOp(op.opId)}>
+          Discard
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function Sidebar({ state, actions }: { state: State; actions: Actions }) {
   const threads = viewThreads(state);
   const open = threads.filter(t => !t.resolved);
@@ -285,6 +308,12 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
     return ra.top + window.scrollY - (rb.top + window.scrollY) || ra.left - rb.left;
   });
   const newDrafts = state.drafts.filter(d => d.key.startsWith('new:') && d.anchor);
+  // Changes that failed for good and whose thread is gone (e.g. deleted by its
+  // author while you were offline): keep the text visible so it isn't lost.
+  const visibleIds = new Set(threads.map(t => t.id));
+  const strandedOps = state.ops.filter(
+    o => o.status === 'failed' && !visibleIds.has(o.threadId) && (o.kind === 'addComment' || o.kind === 'editComment' || o.kind === 'createThread'),
+  );
 
   return (
     <Layer class="sidebar" role="complementary" label="Comments on this page">
@@ -309,6 +338,14 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
           <SignIn state={state} actions={actions} />
         ) : (
           <>
+            {strandedOps.length ? (
+              <>
+                <div class="sb-section">Couldn't save</div>
+                {strandedOps.map(op => (
+                  <StrandedRow key={op.opId} op={op} actions={actions} />
+                ))}
+              </>
+            ) : null}
             {newDrafts.length ? (
               <>
                 <div class="sb-section">Unsent drafts</div>
@@ -424,7 +461,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
 
       {ui.sidebarOpen ? <Sidebar state={state} actions={actions} /> : null}
 
-      {!ui.sidebarOpen && state.user && openCount > 0 ? <Launcher state={state} actions={actions} count={openCount} /> : null}
+      {!ui.sidebarOpen && state.user && (openCount > 0 || state.ops.some(o => o.status === 'failed')) ? (
+        <Launcher state={state} actions={actions} count={openCount} />
+      ) : null}
 
       {ui.toast ? (
         <Layer class="toast" role="status">

@@ -31,9 +31,14 @@ export class Person {
     readonly name: string,
     readonly email: string,
     readonly context: BrowserContext,
-    readonly sw: Worker,
+    private firstWorker: Worker,
     private dir: string,
   ) {}
+
+  /** The current background worker (it changes when Chrome restarts it). */
+  get sw(): Worker {
+    return this.context.serviceWorkers().find(w => w.url().endsWith('/background.js')) ?? this.firstWorker;
+  }
 
   static async launch(name: string, email: string): Promise<Person> {
     const dir = await mkdtemp(join(tmpdir(), `mc-${name}-`));
@@ -64,9 +69,13 @@ export class Person {
   /** Simulate a click on the toolbar button for this page's tab. */
   async clickToolbar(page: Page) {
     const url = page.url();
+    // Wake the worker if Chrome stopped it, like a real click would.
+    if (!this.context.serviceWorkers().some(w => w.url().endsWith('/background.js'))) await this.context.waitForEvent('serviceworker');
+    await page.bringToFront();
     await this.sw.evaluate(async u => {
       const tabs = await chrome.tabs.query({});
-      const tab = tabs.find(t => t.url === u);
+      const matching = tabs.filter(t => t.url === u);
+      const tab = matching.find(t => t.active) ?? matching[0];
       if (!tab) throw new Error(`no tab for ${u}`);
       await (globalThis as any).__marginTest.onActionClicked(tab);
     }, url);
@@ -132,6 +141,7 @@ export async function selectText(page: Page, text: string, occurrence = 0) {
       };
       const a = locate(at, false);
       const b = locate(at + text.length, true);
+      (a.node.parentElement as Element).scrollIntoView({ block: 'center' });
       const sel = document.getSelection()!;
       sel.removeAllRanges();
       sel.setBaseAndExtent(a.node, a.offset, b.node, b.offset);

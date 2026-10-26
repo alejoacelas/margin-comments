@@ -268,9 +268,9 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     return { ok: true as const };
   },
   async refresh(_params, info) {
+    retryNow();
     await refreshConfig();
     await loadThreads(info);
-    void flush();
     return { ok: true as const };
   },
 };
@@ -398,7 +398,7 @@ async function flush(): Promise<void> {
           if (err instanceof TransientError) {
             op.attempts++;
             await persist(['outbox']);
-            scheduleRetry(err.retryAfterMs ?? Math.min(60_000, 1000 * 2 ** Math.min(op.attempts, 6)));
+            scheduleRetry(err.retryAfterMs ?? Math.min(15_000, 1000 * 2 ** Math.min(op.attempts, 4)));
             broadcastState();
             return;
           }
@@ -441,10 +441,22 @@ chrome.alarms.onAlarm.addListener(alarm => {
   if (alarm.name === 'flush') void flush();
 });
 
-self.addEventListener('online', () => {
-  void flush();
+/** Connectivity may be back: retry now instead of waiting out the backoff. */
+function retryNow() {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  if (!ws && reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    reconnectDelay = 1000;
+  }
   ensureLive();
-});
+  void flush();
+}
+
+self.addEventListener('online', retryNow);
 
 // ---------------------------------------------------------------------------
 // Live updates
@@ -541,7 +553,7 @@ function connectLive() {
 function scheduleReconnect() {
   if (reconnectTimer) return;
   const delay = reconnectDelay + Math.random() * 1000;
-  reconnectDelay = Math.min(30_000, reconnectDelay * 2);
+  reconnectDelay = Math.min(10_000, reconnectDelay * 2);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
     ensureLive();

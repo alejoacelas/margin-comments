@@ -342,6 +342,7 @@ class MarginComments implements Actions {
       'visibilitychange',
       () => {
         if (document.visibilityState === 'hidden') this.flushDrafts();
+        else if (this.store.state.connection !== 'online' || this.store.state.ops.length) this.refresh();
       },
       opts,
     );
