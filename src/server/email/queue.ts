@@ -23,6 +23,7 @@ export class EmailQueue {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private kick = false;
+  private stopped = false;
 
   constructor(
     private db: DB,
@@ -48,22 +49,26 @@ export class EmailQueue {
   }
 
   start() {
+    this.stopped = false;
     if (this.timer) return;
-    this.timer = setInterval(() => void this.tick(), this.intervalMs);
+    this.timer = setInterval(() => void this.tick().catch(err => this.log('email queue tick failed', { error: String(err) })), this.intervalMs);
     this.timer.unref();
   }
 
   stop() {
+    this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
   }
 
   /** Process due jobs soon (after the current transaction commits). */
   poke() {
-    setImmediate(() => void this.tick());
+    if (this.stopped) return;
+    setImmediate(() => void this.tick().catch(err => this.log('email queue tick failed', { error: String(err) })));
   }
 
   async tick(): Promise<void> {
+    if (this.stopped) return;
     if (this.running) {
       this.kick = true;
       return;
@@ -77,8 +82,11 @@ export class EmailQueue {
             `SELECT * FROM email_jobs WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT 20`,
           )
           .all(nowIso()) as JobRow[];
-        for (const job of due) await this.process(job);
-      } while (this.kick);
+        for (const job of due) {
+          if (this.stopped) return;
+          await this.process(job);
+        }
+      } while (this.kick && !this.stopped);
     } finally {
       this.running = false;
     }

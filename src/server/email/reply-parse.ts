@@ -23,7 +23,27 @@ export function extractReply(text: string | null, html: string | null): string {
   // empty when our own cut left real text.
   if (!visible.trim() && body.trim()) visible = body;
   visible = stripSignatureLines(visible);
+  visible = stripSignOff(visible);
   return visible.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+const SIGN_OFF = /^(best|best wishes|best regards|kind regards|warm regards|regards|thanks|thanks so much|many thanks|thank you|cheers|sincerely|all the best|warmly|talk soon|xo|xx)[,.!]?$/i;
+
+/**
+ * Drop a trailing sign-off block ("Thanks,\nBob" / "Best regards,\nBob\nAcme"):
+ * a closing phrase on its own line followed by at most 3 short lines. Never
+ * removes the whole message.
+ */
+function stripSignOff(text: string): string {
+  const lines = text.replace(/\s+$/, '').split('\n');
+  for (let i = lines.length - 1; i >= Math.max(1, lines.length - 4); i--) {
+    if (!SIGN_OFF.test(lines[i].trim())) continue;
+    const after = lines.slice(i + 1).filter(l => l.trim());
+    if (after.length > 3 || after.some(l => l.trim().length > 40)) continue;
+    const before = lines.slice(0, i).join('\n').trim();
+    if (before) return before;
+  }
+  return text;
 }
 
 function htmlToText(html: string): string {

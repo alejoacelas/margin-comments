@@ -66,7 +66,7 @@ function serialize(db: DB, rows: ThreadRow[]): Thread[] {
   const ids = rows.map(r => r.id);
   const comments = db
     .prepare(
-      `SELECT * FROM comments WHERE thread_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL ORDER BY created_at, id`,
+      `SELECT * FROM comments WHERE thread_id IN (${ids.map(() => '?').join(',')}) AND deleted_at IS NULL ORDER BY rowid`,
     )
     .all(...ids) as CommentRow[];
   const users = usersById(db, [
@@ -129,7 +129,7 @@ export function listThreads(db: DB, groupId: string, pageKeys: string[]): Thread
   const rows = db
     .prepare(
       `SELECT * FROM threads WHERE group_id = ? AND deleted_at IS NULL AND (page_key IN (${ph}) OR alt_page_key IN (${ph}))
-       ORDER BY created_at LIMIT 1000`,
+       ORDER BY rowid LIMIT 1000`,
     )
     .all(groupId, ...pageKeys, ...pageKeys) as ThreadRow[];
   return serialize(db, rows);
@@ -279,7 +279,7 @@ export function deleteComment(db: DB, user: UserRow, commentId: string): DeleteR
     const t = threadRow(db, c.thread_id)!;
     if (c.deleted_at || t.deleted_at) return { kind: 'noop' } as const;
     const first = db
-      .prepare('SELECT id FROM comments WHERE thread_id = ? ORDER BY created_at, id LIMIT 1')
+      .prepare('SELECT id FROM comments WHERE thread_id = ? ORDER BY rowid LIMIT 1')
       .get(c.thread_id) as { id: string };
     const now = nowIso();
     if (first.id === c.id) {
