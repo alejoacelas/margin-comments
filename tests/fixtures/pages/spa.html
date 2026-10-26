@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8"><title>SPA Fixture</title><style>
+body { font: 17px/1.6 Georgia, serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; }
+table { border-collapse: collapse; } td, th { padding: 4px 8px; }
+</style></head>
+<body><div id="app"><p>Loading…</p></div><div id="clock">0</div>
+<script>
+const app = document.getElementById('app');
+let n = 0;
+setInterval(() => { document.getElementById('clock').textContent = String(++n); }, 250);
+function chunk(i) {
+  const p = document.createElement('p');
+  p.textContent = 'Infinite chunk ' + i + ': this paragraph arrived later, as if loaded by scrolling down the feed of essays.';
+  return p;
+}
+setTimeout(() => {
+  app.innerHTML = '';
+  const h = document.createElement('h1'); h.textContent = 'Rendered by JavaScript'; app.appendChild(h);
+  const p = document.createElement('p'); p.id = 'late';
+  p.textContent = 'This sentence only exists after the client-side render finishes, a second or so after load.';
+  app.appendChild(p);
+  for (let i = 1; i <= 3; i++) app.appendChild(chunk(i));
+}, 1200);
+let more = 3;
+window.addMore = () => { for (let i = 0; i < 3; i++) app.appendChild(chunk(++more)); };
+// Simulated framework re-render: replace the late paragraph node with an identical new node.
+window.rerender = () => { const old = document.getElementById('late'); const p = document.createElement('p'); p.id = 'late'; p.textContent = old.textContent; old.replaceWith(p); };
+window.navigate = (path) => { history.pushState({}, '', path); app.innerHTML = '<h1>Second route</h1><p id="route2">A different view rendered after a pushState navigation.</p>'; };
+</script></body></html>

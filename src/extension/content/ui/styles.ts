@@ -204,7 +204,7 @@ textarea:focus, input:focus { outline: none; border-color: #9ec9ff; }
 }
 .launcher {
   top: 84px; right: 14px; display: flex; align-items: center; gap: 4px; background: #fff; border-radius: 18px;
-  padding: 3px 4px 3px 8px; box-shadow: var(--mc-shadow-card); border: 0; cursor: pointer;
+  padding: 3px 5px 3px 11px; box-shadow: var(--mc-shadow-card); border: 0; cursor: pointer;
 }
 .launcher:hover { box-shadow: 0 2px 8px 3px rgb(60 64 67 / 20%); }
 .launcher .count { font: 600 12px var(--mc-font-ui); color: var(--mc-text-button); margin-right: 2px; }

@@ -12,7 +12,7 @@ import { AnchorManager } from './anchoring/manager';
 import { Highlighter, hueIndexFor, pageIsDark } from './highlights';
 import { BackgroundPort } from './port';
 import { isMine, type State, Store, type UiState, viewThreads, type ViewThread } from './store';
-import type { Actions } from './ui/actions';
+import type { Actions, AnchorBox } from './ui/actions';
 import { App } from './ui/app';
 import { CSS_TEXT } from './ui/styles';
 
@@ -45,6 +45,25 @@ function hash(s: string): string {
 function inEditable(node: Node | null): boolean {
   const el = node instanceof Element ? node : node?.parentElement;
   return !!el?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]');
+}
+
+/** Line boxes of a range plus the right edge of the block it sits in. */
+function boxOf(range: Range): AnchorBox | null {
+  const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+  if (rects.length === 0) return null;
+  let columnRight = Math.max(...rects.map(r => r.right));
+  const start = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+  let block: Element | null = start;
+  while (block && block !== document.body) {
+    const display = getComputedStyle(block).display;
+    if (display !== 'inline' && display !== 'contents') break;
+    block = block.parentElement;
+  }
+  if (block && block !== document.body) {
+    const br = block.getBoundingClientRect();
+    if (br.width > 0 && br.right - columnRight < 600) columnRight = Math.max(columnRight, br.right);
+  }
+  return { rects, columnRight };
 }
 
 const sameKeys = (a: string[], b: string[]) => a.length === b.length && a.every((k, i) => k === b[i]);
@@ -225,6 +244,11 @@ class MarginComments implements Actions {
         const threads = new Map(s.threads);
         threads.set(msg.thread.id, msg.thread);
         this.store.set({ threads });
+        // Someone else resolved the thread we're looking at: let it go, as Google Docs does.
+        const ui = s.ui;
+        if (prev && !prev.resolved && msg.thread.resolved && ui.activeThreadId === msg.thread.id && !(ui.sidebarOpen && ui.sidebarFilter === 'resolved')) {
+          this.store.setUi({ activeThreadId: null });
+        }
         break;
       }
       case 'thread-deleted': {
@@ -554,7 +578,8 @@ class MarginComments implements Actions {
 
   async setResolved(thread: ViewThread, resolved: boolean) {
     await this.mutate({ kind: 'resolve', threadId: thread.id, pageKeys: this.keysFor(thread), resolved });
-    if (resolved && !this.store.state.ui.sidebarOpen) this.store.setUi({ activeThreadId: null });
+    // Like Google Docs: a resolved thread gets out of the way.
+    if (resolved && this.store.state.ui.activeThreadId === thread.id) this.store.setUi({ activeThreadId: null });
   }
 
   private keysFor(thread: ViewThread): string[] {
@@ -684,18 +709,14 @@ class MarginComments implements Actions {
     void this.port.call('refresh', {}).catch(() => {});
   }
 
-  anchorRect(threadId: string): DOMRect[] | null {
+  anchorBox(threadId: string): AnchorBox | null {
     const a = this.anchors.get(threadId);
-    if (a.status !== 'anchored') return null;
-    const rects = Array.from(a.range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
-    return rects.length ? rects : null;
+    return a.status === 'anchored' ? boxOf(a.range) : null;
   }
 
-  draftRect(): DOMRect[] | null {
+  draftBox(): AnchorBox | null {
     const r = this.store.state.ui.composer?.range;
-    if (!r) return null;
-    const rects = Array.from(r.getClientRects()).filter(x => x.width > 0 && x.height > 0);
-    return rects.length ? rects : null;
+    return r ? boxOf(r) : null;
   }
 
   isOrphan(threadId: string): boolean {

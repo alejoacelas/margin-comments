@@ -594,7 +594,7 @@ async function injectInto(tabId: number) {
   await chrome.scripting.executeScript({ target: { tabId }, files: [CONTENT_FILES.early, CONTENT_FILES.main] });
 }
 
-chrome.action.onClicked.addListener(async tab => {
+async function onActionClicked(tab: { id?: number }) {
   if (tab.id === undefined) return;
   const target = [...ports].find(p => p.tabId === tab.id);
   if (target) {
@@ -611,7 +611,13 @@ chrome.action.onClicked.addListener(async tab => {
   } catch {
     // chrome:// pages, the Web Store, etc.
   }
-});
+}
+
+chrome.action.onClicked.addListener(tab => void onActionClicked(tab));
+
+// Lets end-to-end tests "click" the toolbar button (Playwright can't reach
+// browser UI). Only callable from the extension's own worker context.
+(globalThis as unknown as { __marginTest: unknown }).__marginTest = { onActionClicked };
 
 chrome.runtime.onInstalled.addListener(async details => {
   if (details.reason !== 'install' && details.reason !== 'update') return;

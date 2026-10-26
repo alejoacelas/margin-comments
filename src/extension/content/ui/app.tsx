@@ -3,7 +3,7 @@ import type { Me } from '../../../shared/types';
 import type { Draft } from '../../messages';
 import { hueIndexFor, OTHER_HUES } from '../highlights';
 import { isMine, type State, type Store, useStore, viewThreads, type ViewThread } from '../store';
-import type { Actions } from './actions';
+import type { Actions, AnchorBox } from './actions';
 import { Composer, ThreadView } from './thread';
 import { Avatar, Icons, Layer, timeAgo } from './util';
 
@@ -16,13 +16,14 @@ const GAP = 15;
  * there's room (like Curius and Google Docs), else just below it, flipped
  * above when it would leave the viewport.
  */
-function placeCard(rects: DOMRect[] | null, height: number, sidebarOpen: boolean): { left: number; top: number } | null {
-  if (!rects || rects.length === 0) return null;
+function placeCard(box: AnchorBox | null, height: number, sidebarOpen: boolean): { left: number; top: number } | null {
+  if (!box) return null;
+  const rects = box.rects;
   const vw = window.innerWidth - (sidebarOpen ? SIDEBAR_WIDTH : 0);
   const vh = window.innerHeight;
   const first = rects[0];
   const last = rects[rects.length - 1];
-  const right = Math.max(...rects.map(r => r.right));
+  const right = box.columnRight;
   let left: number;
   let top: number;
   if (vw - right - GAP >= CARD_WIDTH + 8) {
@@ -42,14 +43,14 @@ function highlightColor(thread: ViewThread, user: Me | null): string {
   return `hsl(${OTHER_HUES[hueIndexFor(thread.author.name)]} 55% 71% / 0.32)`;
 }
 
-function Card(props: { rects: DOMRect[] | null; sidebarOpen: boolean; children: preact.ComponentChildren; testId: string }) {
+function Card(props: { box: AnchorBox | null; sidebarOpen: boolean; children: preact.ComponentChildren; testId: string }) {
   const [height, setHeight] = useState(160);
   const elRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     const h = elRef.current?.offsetHeight;
     if (h && Math.abs(h - height) > 2) setHeight(h);
   });
-  const pos = placeCard(props.rects, height, props.sidebarOpen) ?? {
+  const pos = placeCard(props.box, height, props.sidebarOpen) ?? {
     left: Math.max(8, window.innerWidth - (props.sidebarOpen ? SIDEBAR_WIDTH : 0) - CARD_WIDTH - 24),
     top: 96,
   };
@@ -278,8 +279,8 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
   const orphans = shown.filter(t => actions.isOrphan(t.id));
   // Document order for anchored threads.
   anchored.sort((a, b) => {
-    const ra = actions.anchorRect(a.id)?.[0];
-    const rb = actions.anchorRect(b.id)?.[0];
+    const ra = actions.anchorBox(a.id)?.rects[0];
+    const rb = actions.anchorBox(b.id)?.rects[0];
     if (!ra || !rb) return 0;
     return ra.top + window.scrollY - (rb.top + window.scrollY) || ra.left - rb.left;
   });
@@ -399,7 +400,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       ) : null}
 
       {ui.composer ? (
-        <Card rects={actions.draftRect()} sidebarOpen={ui.sidebarOpen} testId="composer-card">
+        <Card box={actions.draftBox()} sidebarOpen={ui.sidebarOpen} testId="composer-card">
           {state.user ? (
             <Composer quote={ui.composer.quote} draftKey={ui.composer.draftKey} drafts={state.drafts} actions={actions} />
           ) : (
@@ -416,7 +417,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       ) : null}
 
       {showActiveCard && active ? (
-        <Card rects={actions.anchorRect(active.id)} sidebarOpen={ui.sidebarOpen} testId="thread-card">
+        <Card box={actions.anchorBox(active.id)} sidebarOpen={ui.sidebarOpen} testId="thread-card">
           <ThreadView thread={active} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </Card>
       ) : null}

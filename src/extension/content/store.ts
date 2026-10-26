@@ -1,4 +1,4 @@
-import { useEffect, useReducer } from 'preact/hooks';
+import { useLayoutEffect, useReducer } from 'preact/hooks';
 import type { Comment, Me, ServerConfig, Thread } from '../../shared/types';
 import type { Connection, Draft, Op } from '../messages';
 
@@ -90,7 +90,15 @@ export class Store {
 
 export function useStore(store: Store): State {
   const [, force] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => store.subscribe(() => force(0)), [store]);
+  const rendered = store.state;
+  useLayoutEffect(() => {
+    const unsubscribe = store.subscribe(() => force(0));
+    // State may have changed between render and subscribe; don't miss it.
+    if (store.state !== rendered) force(0);
+    return () => {
+      unsubscribe();
+    };
+  }, [store]);
   return store.state;
 }
 

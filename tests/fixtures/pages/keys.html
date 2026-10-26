@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Shortcuts Fixture</title><style>
+body { font: 17px/1.6 Georgia, serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; }
+table { border-collapse: collapse; } td, th { padding: 4px 8px; }
+</style></head>
+<body><main><h1>Keyboard shortcuts everywhere</h1>
+<p id="k1">This site binds single-letter shortcuts like j and k, and it cancels mousedown events on the document, the way some editors do.</p>
+<p id="k2">Typing a comment here must not trigger the page's shortcuts or be blocked by its handlers.</p></main>
+<script>
+window.__pageKeys = 0; window.__pageMouse = 0;
+window.addEventListener('keydown', e => { window.__pageKeys++; if (e.key === 'j') document.body.dataset.jumped = 'yes'; }, true);
+document.addEventListener('keydown', e => { window.__pageKeys++; });
+document.addEventListener('mousedown', e => { window.__pageMouse++; if (!e.target.closest('p, h1')) e.preventDefault(); }, true);
+</script></body></html>

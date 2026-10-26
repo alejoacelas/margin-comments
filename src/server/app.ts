@@ -226,6 +226,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
   // ---- basics ----
 
   app.get('/healthz', async () => ({ ok: true }));
+  app.get('/favicon.ico', async (_req, reply) => reply.code(204).send());
   app.get('/', async (_req, reply) => html(reply, homePage()));
   app.get('/api/config', async (): Promise<ServerConfig> => ({
     googleEnabled: googleEnabled(config),

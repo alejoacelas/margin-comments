@@ -1,6 +1,9 @@
 import type { Draft } from '../../messages';
 import type { ViewThread } from '../store';
 
+/** Viewport geometry of a highlight: its line boxes and its text column's right edge. */
+export type AnchorBox = { rects: DOMRect[]; columnRight: number };
+
 /** Everything the UI can ask the controller to do. */
 export interface Actions {
   startEmail(email: string): Promise<{ requestId: string; emailMode: string }>;
@@ -29,8 +32,8 @@ export interface Actions {
   setFilter(filter: 'open' | 'resolved'): void;
   copy(text: string): void;
   refresh(): void;
-  anchorRect(threadId: string): DOMRect[] | null;
-  draftRect(): DOMRect[] | null;
+  anchorBox(threadId: string): AnchorBox | null;
+  draftBox(): AnchorBox | null;
   isOrphan(threadId: string): boolean;
   apiUrl: string;
 }
