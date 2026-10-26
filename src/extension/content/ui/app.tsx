@@ -238,7 +238,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
       {props.selected ? (
         <div class="thread-inline" onClick={e => e.stopPropagation()}>
           {props.orphan ? <div class="hint" style={{ padding: '0 6px 4px' }}>The highlighted text can't be found on this page anymore.</div> : null}
-          <ThreadView thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader />
+          <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </div>
       ) : first ? (
         <div class="row-first">{first.body}</div>
@@ -247,17 +247,22 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
   );
 }
 
-function DraftRow({ draft, actions }: { draft: Draft; actions: Actions }) {
+function DraftRow({ draft, actions, orphaned }: { draft: Draft; actions: Actions; orphaned?: boolean }) {
   return (
     <div class="row" data-testid="draft-row">
-      <div class="row-quote" style={{ background: '#f4f4f4' }}>
-        {draft.anchor?.quote}
-      </div>
+      {draft.anchor ? (
+        <div class="row-quote" style={{ background: '#f4f4f4' }}>
+          {draft.anchor.quote}
+        </div>
+      ) : null}
       <div class="row-first">{draft.text}</div>
+      {orphaned ? <div class="c-status">The comment this was for was deleted.</div> : null}
       <div class="row-end" style={{ justifyContent: 'flex-start' }}>
-        <button class="link-btn" onClick={() => actions.resumeDraft(draft)}>
-          Continue
-        </button>
+        {orphaned ? null : (
+          <button class="link-btn" onClick={() => actions.resumeDraft(draft)}>
+            Continue
+          </button>
+        )}
         <button class="link-btn muted" onClick={() => actions.copy(draft.text)}>
           Copy text
         </button>
@@ -307,13 +312,26 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
     if (!ra || !rb) return 0;
     return ra.top + window.scrollY - (rb.top + window.scrollY) || ra.left - rb.left;
   });
-  const newDrafts = state.drafts.filter(d => d.key.startsWith('new:') && d.anchor);
+  const newDrafts = state.drafts.filter(d => d.key.startsWith('new:') && d.anchor && d.text.trim());
   // Changes that failed for good and whose thread is gone (e.g. deleted by its
   // author while you were offline): keep the text visible so it isn't lost.
   const visibleIds = new Set(threads.map(t => t.id));
+  const commentIds = new Set(threads.flatMap(t => t.comments.map(c => c.id)));
   const strandedOps = state.ops.filter(
-    o => o.status === 'failed' && !visibleIds.has(o.threadId) && (o.kind === 'addComment' || o.kind === 'editComment' || o.kind === 'createThread'),
+    o =>
+      o.status === 'failed' &&
+      (o.kind === 'addComment' || o.kind === 'editComment' || o.kind === 'createThread') &&
+      (!visibleIds.has(o.threadId) || (o.kind === 'editComment' && !commentIds.has(o.commentId))),
   );
+  // Reply/edit drafts whose thread or comment was deleted: still recoverable.
+  const orphanDrafts = state.loaded
+    ? state.drafts.filter(d => {
+        if (!d.text.trim()) return false;
+        if (d.key.startsWith('reply:')) return !visibleIds.has(d.key.slice(6));
+        if (d.key.startsWith('edit:')) return !commentIds.has(d.key.slice(5));
+        return false;
+      })
+    : [];
 
   return (
     <Layer class="sidebar" role="complementary" label="Comments on this page">
@@ -346,11 +364,14 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
                 ))}
               </>
             ) : null}
-            {newDrafts.length ? (
+            {newDrafts.length || orphanDrafts.length ? (
               <>
                 <div class="sb-section">Unsent drafts</div>
                 {newDrafts.map(d => (
                   <DraftRow key={d.key} draft={d} actions={actions} />
+                ))}
+                {orphanDrafts.map(d => (
+                  <DraftRow key={d.key} draft={d} actions={actions} orphaned />
                 ))}
               </>
             ) : null}
@@ -439,7 +460,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       {ui.composer ? (
         <Card box={actions.draftBox()} sidebarOpen={ui.sidebarOpen} testId="composer-card">
           {state.user ? (
-            <Composer quote={ui.composer.quote} draftKey={ui.composer.draftKey} drafts={state.drafts} actions={actions} />
+            <Composer key={ui.composer.threadId} quote={ui.composer.quote} draftKey={ui.composer.draftKey} drafts={state.drafts} actions={actions} />
           ) : (
             <>
               <SignIn state={state} actions={actions} compact />
@@ -455,7 +476,8 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
 
       {showActiveCard && active ? (
         <Card box={actions.anchorBox(active.id)} sidebarOpen={ui.sidebarOpen} testId="thread-card">
-          <ThreadView thread={active} user={state.user} drafts={state.drafts} actions={actions} showHeader />
+          {/* Keyed by thread: switching threads must never carry editor state over. */}
+          <ThreadView key={active.id} thread={active} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </Card>
       ) : null}
 

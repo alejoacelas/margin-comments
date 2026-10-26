@@ -16,6 +16,12 @@ type PortInfo = {
   keys: string[];
   threads: Map<string, Thread>;
   loaded: boolean;
+  /** Bumped on every (re)load; a response from an older load is discarded. */
+  loadGen: number;
+  /** When each thread last arrived live, so an older fetch can't drop it. */
+  liveAt: Map<string, number>;
+  /** Threads deleted while this page was open; a fetch can't resurrect them. */
+  tombstones: Set<string>;
 };
 
 // ---------------------------------------------------------------------------
@@ -71,7 +77,10 @@ function opsFor(info: PortInfo): Op[] {
 }
 
 function draftsFor(info: PortInfo): Draft[] {
-  return Object.values(drafts).filter(d => !d.anchor || d.anchor.pageKeys.some(k => info.keys.includes(k)));
+  return Object.values(drafts).filter(d => {
+    const keys = d.anchor?.pageKeys ?? d.pageKeys;
+    return !keys || keys.some(k => info.keys.includes(k));
+  });
 }
 
 function sendState(info: PortInfo) {
@@ -89,9 +98,11 @@ function matches(info: PortInfo, thread: { pageKey: string; altPageKey: string |
 function deliverThread(thread: Thread) {
   for (const info of ports) {
     if (!matches(info, thread)) continue;
+    if (info.tombstones.has(thread.id)) continue;
     const prev = info.threads.get(thread.id);
     if (prev && prev.version > thread.version) continue;
     info.threads.set(thread.id, thread);
+    info.liveAt.set(thread.id, Date.now());
     post(info, { t: 'thread', thread });
     updateBadge(info);
   }
@@ -101,6 +112,7 @@ function deliverDeleted(id: string, pageKey: string, altPageKey: string | null) 
   for (const info of ports) {
     if (!matches(info, { pageKey, altPageKey }) && !info.threads.has(id)) continue;
     info.threads.delete(id);
+    info.tombstones.add(id);
     post(info, { t: 'thread-deleted', id });
     updateBadge(info);
   }
@@ -114,6 +126,7 @@ function updateBadge(info: PortInfo) {
 }
 
 async function loadThreads(info: PortInfo) {
+  const gen = ++info.loadGen;
   if (!session || info.keys.length === 0) {
     info.threads.clear();
     info.loaded = false;
@@ -121,14 +134,30 @@ async function loadThreads(info: PortInfo) {
     updateBadge(info);
     return;
   }
+  const startedAt = Date.now();
+  const token = session.token;
   try {
-    const keys = info.keys.map(encodeURIComponent).join(',');
-    const { threads } = await api<{ threads: Thread[] }>('GET', `/api/threads?keys=${keys}`, { token: session.token });
-    info.threads = new Map(threads.map(t => [t.id, t]));
+    const query = info.keys.map(k => `key=${encodeURIComponent(k)}`).join('&');
+    const { threads } = await api<{ threads: Thread[] }>('GET', `/api/threads?${query}`, { token });
+    // A newer load (navigation, reconnect, sign-in) superseded this one.
+    if (gen !== info.loadGen || session?.token !== token || !ports.has(info)) return;
+    // Merge with what arrived live while the request was in flight: highest
+    // version wins, deletions stick, and threads created meanwhile are kept.
+    const merged = new Map<string, Thread>();
+    for (const t of threads) {
+      if (info.tombstones.has(t.id)) continue;
+      const cur = info.threads.get(t.id);
+      merged.set(t.id, cur && cur.version > t.version ? cur : t);
+    }
+    for (const [id, cur] of info.threads) {
+      if (!merged.has(id) && (info.liveAt.get(id) ?? 0) >= startedAt) merged.set(id, cur);
+    }
+    info.threads = merged;
     info.loaded = true;
-    post(info, { t: 'threads', threads, loaded: true });
+    post(info, { t: 'threads', threads: [...merged.values()], loaded: true });
     updateBadge(info);
   } catch (err) {
+    if (gen !== info.loadGen) return;
     if (err instanceof RequestError && err.status === 401) return handleUnauthorized();
     // Keep whatever we showed before; tell the page we're offline.
     post(info, { t: 'threads', threads: [...info.threads.values()], loaded: info.loaded, error: (err as Error).message });
@@ -137,7 +166,16 @@ async function loadThreads(info: PortInfo) {
 
 chrome.runtime.onConnect.addListener(port => {
   if (port.name !== PORT_NAME) return;
-  const info: PortInfo = { port, tabId: port.sender?.tab?.id, keys: [], threads: new Map(), loaded: false };
+  const info: PortInfo = {
+    port,
+    tabId: port.sender?.tab?.id,
+    keys: [],
+    threads: new Map(),
+    loaded: false,
+    loadGen: 0,
+    liveAt: new Map(),
+    tombstones: new Set(),
+  };
   ports.add(info);
   port.onMessage.addListener((msg: ToBackground) => {
     void ready.then(() => onPortMessage(info, msg));
@@ -152,6 +190,9 @@ async function onPortMessage(info: PortInfo, msg: ToBackground) {
   if (msg.t === 'hello') {
     info.keys = Array.isArray(msg.pageKeys) ? msg.pageKeys.slice(0, 2).filter(k => typeof k === 'string') : [];
     info.threads.clear();
+    info.liveAt.clear();
+    info.tombstones.clear();
+    info.loaded = false;
     sendState(info);
     if (!config) void refreshConfig();
     syncSubscriptions();
@@ -589,8 +630,9 @@ function syncSubscriptions() {
   for (const info of ports) for (const k of info.keys) wanted.add(k);
   const add = [...wanted].filter(k => !subscribed.has(k));
   const remove = [...subscribed].filter(k => !wanted.has(k));
-  if (add.length) ws.send(JSON.stringify({ type: 'subscribe', pageKeys: add }));
-  if (remove.length) ws.send(JSON.stringify({ type: 'unsubscribe', pageKeys: remove }));
+  // The server takes at most 10 keys per message.
+  for (let i = 0; i < add.length; i += 10) ws.send(JSON.stringify({ type: 'subscribe', pageKeys: add.slice(i, i + 10) }));
+  for (let i = 0; i < remove.length; i += 10) ws.send(JSON.stringify({ type: 'unsubscribe', pageKeys: remove.slice(i, i + 10) }));
   for (const k of add) subscribed.add(k);
   for (const k of remove) subscribed.delete(k);
 }

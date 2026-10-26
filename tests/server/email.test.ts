@@ -185,6 +185,23 @@ describe('notifications and inbound replies (through the API)', () => {
     void a;
   });
 
+  it('a comment and its notifications commit together', async () => {
+    const { b, p } = await setup();
+    const original = t.queue.enqueue.bind(t.queue);
+    t.queue.enqueue = () => {
+      throw new Error('disk full');
+    };
+    const id = randomUUID();
+    const failed = await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id, body: 'atomic' } });
+    expect(failed.statusCode).toBe(500);
+    t.queue.enqueue = original;
+    t.provider.sent = [];
+    const retry = await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id, body: 'atomic' } });
+    expect(retry.statusCode).toBe(201); // the failed attempt left nothing behind
+    await t.queue.tick();
+    expect(t.provider.sent.map(s => s.msg.to)).toEqual(['alice@example.com']);
+  });
+
   async function deliver(email: ReturnType<typeof receivedEmail>) {
     t.provider.received.set(email.id, email);
     const body = JSON.stringify({ type: 'email.received', created_at: new Date().toISOString(), data: { email_id: email.id, from: email.from, to: email.to } });
@@ -215,11 +232,18 @@ describe('notifications and inbound replies (through the API)', () => {
       ['empty', { from: 'alice@example.com', text: '> only quoted' }],
       ['no address', { from: 'alice@example.com', to: ['someone@reply.mail.test'] }],
       ['tampered', { from: 'alice@example.com', to: [replyTo.replace(/-([a-z2-7]{16})@/, '-aaaaaaaaaaaaaaaa@')] }],
+      ['no auth verdict', { from: 'alice@example.com', authentication: null }],
+      ['inconclusive auth', { from: 'alice@example.com', authentication: { spf: 'gray', dkim: 'gray', dmarc: 'gray' } }],
+      ['self-asserted header only', { from: 'alice@example.com', authentication: null, headers: { 'authentication-results': 'mx; dmarc=pass' } }],
     ];
     for (const [name, o] of cases) {
       const r = await deliver(receivedEmail({ id: randomUUID(), to: [replyTo], text: `forged ${name}`, ...o }));
       expect(r.json().status, name).toBe('rejected');
     }
+
+    // DMARC "gray" (no policy) with DKIM pass is accepted.
+    const gray = await deliver(receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'gray but signed', authentication: { spf: 'gray', dkim: 'pass', dmarc: 'gray' } }));
+    expect(gray.json().status).toBe('posted');
 
     // Bad signature: 401 and nothing posted.
     const body = JSON.stringify({ type: 'email.received', data: { email_id: 'x' } });
@@ -238,7 +262,7 @@ describe('notifications and inbound replies (through the API)', () => {
     expect((await deliver(later)).json().status).toBe('posted');
 
     const final = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
-    expect(final.comments.map((c: { body: string }) => c.body)).toEqual(['First!', 'ping', 'pong', 'once', 'after a hiccup']);
+    expect(final.comments.map((c: { body: string }) => c.body)).toEqual(['First!', 'ping', 'pong', 'gray but signed', 'once', 'after a hiccup']);
     expect(JSON.stringify(final)).not.toContain('forged');
   });
 

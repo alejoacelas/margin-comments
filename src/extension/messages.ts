@@ -30,6 +30,8 @@ export type Draft = {
   updatedAt: number;
   /** For new-thread drafts: where the comment was going. */
   anchor?: { pageKeys: string[]; selectors: Selector[]; quote: string };
+  /** Page the draft belongs to (reply and edit drafts). */
+  pageKeys?: string[];
 };
 
 export type Connection = 'online' | 'connecting' | 'offline';

@@ -105,7 +105,8 @@ export function useStore(store: Store): State {
 /** Merge server threads with the outbox to get what the user should see. */
 export function viewThreads(state: Pick<State, 'threads' | 'ops' | 'user'>): ViewThread[] {
   const out = new Map<string, ViewThread>();
-  for (const t of state.threads.values()) out.set(t.id, { ...t, comments: t.comments.slice() });
+  // Deep enough copy that applying unsent ops never touches server state.
+  for (const t of state.threads.values()) out.set(t.id, { ...t, comments: t.comments.map(c => ({ ...c })) });
   const me = state.user ? { id: state.user.id, name: state.user.name } : { id: '', name: 'You' };
 
   for (const op of state.ops) {

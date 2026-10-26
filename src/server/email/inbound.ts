@@ -58,6 +58,8 @@ export type InboundDeps = {
   secret: string;
   replyDomain: string;
   getUser: (id: string) => { id: string; email: string } | null;
+  /** Reject replies whose sender authentication is missing or inconclusive. */
+  requireSenderAuth: boolean;
   /** Post a comment as `userId`; throws on failure. */
   postComment: (userId: string, threadId: string, commentId: string, body: string) => void;
 };
@@ -71,12 +73,20 @@ export function findReplyTarget(secret: string, domain: string, email: ReceivedE
   return null;
 }
 
-/** True when the receiving server saw the sender fail authentication. */
-function failedAuthentication(email: ReceivedEmail): boolean {
+/**
+ * Sender authentication as judged by the receiving server (Resend's
+ * `authentication` field; the message's own Authentication-Results header is
+ * sender-controlled and ignored). DMARC pass is aligned with From by
+ * definition; "gray" DMARC (no policy) still needs SPF or DKIM to pass.
+ */
+export function senderVerdict(email: ReceivedEmail): 'pass' | 'fail' | 'unknown' {
   const a = email.authentication;
-  if (!a) return false;
-  if (a.dmarc === 'fail') return true;
-  return a.spf === 'fail' && a.dkim === 'fail';
+  if (!a) return 'unknown';
+  if (a.dmarc === 'fail') return 'fail';
+  if (a.dmarc === 'pass') return 'pass';
+  if (a.spf === 'fail' && a.dkim === 'fail') return 'fail';
+  if (a.dmarc === 'gray' && (a.dkim === 'pass' || a.spf === 'pass')) return 'pass';
+  return 'unknown';
 }
 
 export function processInbound(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
@@ -107,7 +117,9 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
   if (from !== user.email.toLowerCase() || (envelopeFrom && envelopeFrom !== user.email.toLowerCase())) {
     return { status: 'rejected', reason: 'sender does not match account' };
   }
-  if (failedAuthentication(email)) return { status: 'rejected', reason: 'sender failed SPF/DKIM/DMARC' };
+  const verdict = senderVerdict(email);
+  if (verdict === 'fail') return { status: 'rejected', reason: 'sender failed SPF/DKIM/DMARC' };
+  if (verdict === 'unknown' && deps.requireSenderAuth) return { status: 'rejected', reason: 'sender not authenticated' };
 
   // Ignore auto-replies (vacation responders, bounces).
   const autoSubmitted = (email.headers['auto-submitted'] ?? '').toLowerCase();

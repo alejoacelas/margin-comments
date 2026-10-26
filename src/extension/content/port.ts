@@ -22,10 +22,12 @@ export class BackgroundPort {
   private hello: ToBackground | null = null;
   private retry = 250;
   private closed = false;
+  private everConnected = false;
 
   constructor(
     private onMessage: (msg: ToContent) => void,
     private onInvalidated: () => void,
+    private onReconnected: () => void = () => {},
   ) {}
 
   static contextValid(): boolean {
@@ -68,7 +70,10 @@ export class BackgroundPort {
       setTimeout(() => this.connect(), this.retry);
       this.retry = Math.min(5000, this.retry * 2);
     });
+    const reconnect = this.everConnected;
+    this.everConnected = true;
     if (this.hello) this.send(this.hello);
+    if (reconnect) this.onReconnected();
   }
 
   private invalidate() {

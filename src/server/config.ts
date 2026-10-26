@@ -24,6 +24,8 @@ export type Config = {
     from: string;
     /** Poll interval of the email job worker. */
     workerIntervalMs: number;
+    /** Reject email replies without a positive SPF/DKIM/DMARC verdict. */
+    requireSenderAuth: boolean;
   };
   google: {
     clientId: string;
@@ -34,6 +36,8 @@ export type Config = {
   };
   /** Session lifetime in days (sliding). */
   sessionDays: number;
+  /** Sign-in emails allowed per client IP per 15 minutes (shared IPs need headroom). */
+  loginIpLimit: number;
   isProduction: boolean;
 };
 
@@ -70,6 +74,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       replyDomain: env('REPLY_DOMAIN', domain),
       from: env('EMAIL_FROM', domain ? `Margin Comments <notifications@${domain}>` : ''),
       workerIntervalMs: Number(env('EMAIL_WORKER_INTERVAL_MS', '1000')),
+      requireSenderAuth: env('INBOUND_REQUIRE_SENDER_AUTH', 'true') !== 'false',
     },
     google: {
       clientId: env('GOOGLE_CLIENT_ID'),
@@ -79,6 +84,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
       userinfoUrl: env('GOOGLE_USERINFO_URL', 'https://openidconnect.googleapis.com/v1/userinfo'),
     },
     sessionDays: Number(env('SESSION_DAYS', '180')),
+    loginIpLimit: Number(env('LOGIN_IP_LIMIT', '50')),
     isProduction,
   };
   return { ...config, ...overrides };

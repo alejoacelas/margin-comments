@@ -5,7 +5,7 @@
 import { render } from 'preact';
 import type { Selector, TextPositionSelector, Thread } from '../../shared/types';
 import { LIMITS } from '../../shared/types';
-import { type PageIdentity, pageIdentity, threadIdFromHash } from '../../shared/url';
+import { type PageIdentity, pageIdentity, threadIdFromUrl } from '../../shared/url';
 import type { Draft, NewOp, ToContent } from '../messages';
 import { anchorSelectors, describeRange } from './anchoring/anchor';
 import { AnchorManager } from './anchoring/manager';
@@ -78,7 +78,9 @@ class MarginComments implements Actions {
   private container: HTMLElement;
   private abort = new AbortController();
   private identity: PageIdentity;
-  private draftTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; draft: Draft }>();
+  /** Draft text not yet acknowledged by the background (retried until it is). */
+  private draftTimers = new Map<string, { timer: ReturnType<typeof setTimeout> | null; draft: Draft }>();
+  private draftRetry: ReturnType<typeof setTimeout> | null = null;
   private composerText = '';
   private pendingOpen: string | null = null;
   private urlTimer: ReturnType<typeof setInterval>;
@@ -130,6 +132,9 @@ class MarginComments implements Actions {
     }
     this.container = document.createElement('div');
     shadow.appendChild(this.container);
+    // Clicks inside our UI activate normally but don't bubble out to the page
+    // (see early.ts for why clicks aren't replayed like other events).
+    for (const type of ['click', 'dblclick', 'auxclick']) this.host.addEventListener(type, e => e.stopPropagation());
     document.documentElement.appendChild(this.host);
     if (window.__marginCommentsShield) window.__marginCommentsShield.host = this.host;
 
@@ -138,11 +143,13 @@ class MarginComments implements Actions {
       () => document.body,
       node => node === this.host || this.host.contains(node),
       () => this.onAnchorsChanged(),
+      () => this.onLayoutChange(),
     );
 
     this.port = new BackgroundPort(
       msg => this.onMessage(msg),
       () => this.teardown(),
+      () => this.flushDrafts(),
     );
 
     render(<App store={this.store} actions={this} />, this.container);
@@ -151,7 +158,7 @@ class MarginComments implements Actions {
     this.anchors.start();
     this.port.connect();
     this.port.setHello(identity.keys, identity.url);
-    this.pendingOpen = threadIdFromHash(location.hash);
+    this.pendingOpen = threadIdFromUrl(location.href);
     this.urlTimer = setInterval(() => this.checkUrl(), 1000);
     void this.loadFonts();
     if (location.origin === API_ORIGIN && location.pathname === '/auth/verify') void this.handleVerifyPage();
@@ -346,6 +353,11 @@ class MarginComments implements Actions {
       },
       opts,
     );
+    // Layout can change without DOM mutations (images loading, fonts, CSS):
+    // keep hit-testing and card positions in step.
+    const resize = new ResizeObserver(() => this.onLayoutChange());
+    if (document.body) resize.observe(document.body);
+    this.abort.signal.addEventListener('abort', () => resize.disconnect());
     // Re-attach our host if a framework wipes unknown nodes off <html>.
     const keeper = new MutationObserver(() => {
       if (!this.host.isConnected && !this.store.state.invalidated) document.documentElement.appendChild(this.host);
@@ -461,8 +473,8 @@ class MarginComments implements Actions {
     this.store.set({ threads: new Map(), loaded: false, pageKeys: next.keys, pageUrl: next.url });
     this.store.setUi({ activeThreadId: null, composer: null, adder: null });
     this.port.setHello(next.keys, next.url);
-    const fromHash = threadIdFromHash(location.hash);
-    if (fromHash) this.pendingOpen = fromHash;
+    const fromLink = threadIdFromUrl(location.href);
+    if (fromLink) this.pendingOpen = fromLink;
   }
 
   // -------------------------------------------------------------------------
@@ -519,9 +531,20 @@ class MarginComments implements Actions {
     sel.removeAllRanges();
   }
 
+  /**
+   * Queue a change. The background persists it (and drops the draft) before
+   * acknowledging; until then the draft stays saved, so a failure here loses
+   * nothing.
+   */
   private async mutate(op: NewOp, draftKey?: string) {
-    if (draftKey) this.cancelDraftSave(draftKey);
-    await this.port.call('mutate', { op, draftKey });
+    if (draftKey) this.pauseDraftSave(draftKey);
+    try {
+      await this.port.call('mutate', { op, draftKey });
+    } catch (err) {
+      if (draftKey) this.flushDraft(draftKey);
+      throw err;
+    }
+    if (draftKey) this.draftTimers.delete(draftKey);
   }
 
   async createThread(body: string) {
@@ -567,13 +590,14 @@ class MarginComments implements Actions {
 
   async remove(thread: ViewThread, commentId: string) {
     const isFirst = thread.comments[0]?.id === commentId;
-    // Deleting a thread that never reached the server: just drop the unsent op.
+    // An unsent thread: drop its create op, and also queue a delete in case
+    // the create is already in flight (deleting a thread the server never
+    // got is a harmless no-op).
     if (isFirst && thread.pending) {
       const op = this.store.state.ops.find(o => o.kind === 'createThread' && o.threadId === thread.id);
       if (op) await this.port.call('discardOp', { opId: op.opId });
-    } else {
-      await this.mutate({ kind: 'deleteComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId });
     }
+    await this.mutate({ kind: 'deleteComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId });
     if (isFirst && this.store.state.ui.activeThreadId === thread.id) this.store.setUi({ activeThreadId: null });
   }
 
@@ -603,33 +627,55 @@ class MarginComments implements Actions {
       text,
       updatedAt: Date.now(),
       anchor: key.startsWith('new:') && c && c.draftKey === key ? { pageKeys: this.identity.keys, selectors: c.selectors, quote: c.quote } : undefined,
+      pageKeys: this.identity.keys,
     };
     const existing = this.draftTimers.get(key);
-    if (existing) clearTimeout(existing.timer);
+    if (existing?.timer) clearTimeout(existing.timer);
     const timer = setTimeout(() => this.flushDraft(key), 400);
     this.draftTimers.set(key, { timer, draft });
   }
 
+  draftText(key: string): string | undefined {
+    return this.draftTimers.get(key)?.draft.text ?? this.store.state.drafts.find(d => d.key === key)?.text;
+  }
+
+  /** Persist a draft; it stays queued here until the background confirms. */
   private flushDraft(key: string) {
     const entry = this.draftTimers.get(key);
     if (!entry) return;
-    clearTimeout(entry.timer);
-    this.draftTimers.delete(key);
-    void this.port.call('saveDraft', { draft: entry.draft }).catch(() => {});
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = null;
+    this.port
+      .call('saveDraft', { draft: entry.draft })
+      .then(() => {
+        if (this.draftTimers.get(key) === entry) this.draftTimers.delete(key);
+      })
+      .catch(() => this.retryDraftsSoon());
+  }
+
+  private retryDraftsSoon() {
+    if (this.draftRetry || this.store.state.invalidated) return;
+    this.draftRetry = setTimeout(() => {
+      this.draftRetry = null;
+      this.flushDrafts();
+    }, 1000);
   }
 
   private flushDrafts() {
     for (const key of [...this.draftTimers.keys()]) this.flushDraft(key);
   }
 
-  private cancelDraftSave(key: string) {
+  /** Hold a draft's pending save while it's being submitted. */
+  private pauseDraftSave(key: string) {
     const entry = this.draftTimers.get(key);
-    if (entry) clearTimeout(entry.timer);
-    this.draftTimers.delete(key);
+    if (entry?.timer) clearTimeout(entry.timer);
+    if (entry) entry.timer = null;
   }
 
   deleteDraft(key: string) {
-    this.cancelDraftSave(key);
+    const entry = this.draftTimers.get(key);
+    if (entry?.timer) clearTimeout(entry.timer);
+    this.draftTimers.delete(key);
     void this.port.call('deleteDraft', { key }).catch(() => {});
   }
 

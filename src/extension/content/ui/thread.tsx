@@ -142,8 +142,8 @@ function CommentItem(props: {
 }) {
   const { thread, comment, isFirst, user, actions } = props;
   const editKey = `edit:${comment.id}`;
-  const editDraft = props.drafts.find(d => d.key === editKey);
-  const [editing, setEditing] = useState(!!editDraft);
+  const editDraft = actions.draftText(editKey);
+  const [editing, setEditing] = useState(editDraft !== undefined && editDraft.trim() !== '');
   const [confirming, setConfirming] = useState(false);
   const own = !!user && comment.author.id === user.id;
 
@@ -159,7 +159,7 @@ function CommentItem(props: {
       {editing ? (
         <div class="reply" style={{ paddingLeft: '4px' }}>
           <Editor
-            initial={editDraft?.text ?? comment.body}
+            initial={editDraft ?? comment.body}
             placeholder="Edit comment"
             draftKey={editKey}
             submitLabel="Save"
@@ -222,14 +222,14 @@ function CommentItem(props: {
 
 export function ReplyBox({ thread, drafts, actions }: { thread: ViewThread; drafts: Draft[]; actions: Actions }) {
   const key = `reply:${thread.id}`;
-  const draft = drafts.find(d => d.key === key);
+  void drafts;
   const idRef = useRef(newId());
   const [resetKey, setResetKey] = useState(0);
   return (
     <div class="reply">
       <Editor
         key={resetKey}
-        initial={draft?.text ?? ''}
+        initial={actions.draftText(key) ?? ''}
         placeholder="Reply"
         draftKey={key}
         submitLabel="Save"
@@ -290,17 +290,16 @@ export function ThreadView(props: {
       {thread.comments.map((c, i) => (
         <CommentItem key={c.id} thread={thread} comment={c} isFirst={i === 0} user={user} drafts={props.drafts} actions={actions} />
       ))}
-      {user ? <ReplyBox thread={thread} drafts={props.drafts} actions={actions} /> : null}
+      {user ? <ReplyBox key={thread.id} thread={thread} drafts={props.drafts} actions={actions} /> : null}
     </div>
   );
 }
 
 export function Composer(props: { quote: string; draftKey: string; drafts: Draft[]; actions: Actions }) {
-  const draft = props.drafts.find(d => d.key === props.draftKey);
   return (
     <div class="composer" data-testid="composer">
       <Editor
-        initial={draft?.text ?? ''}
+        initial={props.actions.draftText(props.draftKey) ?? ''}
         placeholder="Add a comment"
         draftKey={props.draftKey}
         submitLabel="Comment"

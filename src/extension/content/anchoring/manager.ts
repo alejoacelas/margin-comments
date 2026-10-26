@@ -41,6 +41,7 @@ export class AnchorManager {
   private entries = new Map<string, Entry>();
   private observer: MutationObserver | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private timerDue = 0;
   private lastRun = 0;
   private destroyed = false;
   private textLength = -1;
@@ -50,6 +51,8 @@ export class AnchorManager {
     private getRoot: () => Element | null,
     private ignore: (node: Node) => boolean,
     private onChange: () => void,
+    /** Called after every pass: the page changed, so geometry may have too. */
+    private onLayout: () => void = () => {},
   ) {}
 
   start() {
@@ -110,7 +113,9 @@ export class AnchorManager {
 
   /** Anchor a just-created thread immediately with a known-good range. */
   seed(id: string, selectors: Selector[], range: Range) {
-    this.entries.set(id, this.newEntry(id, selectors, { status: 'anchored', range, fuzzy: false }));
+    const entry = this.newEntry(id, selectors, { status: 'anchored', range, fuzzy: false });
+    entry.anchoredText = stripWs(range.toString());
+    this.entries.set(id, entry);
   }
 
   get(id: string): AnchorState {
@@ -121,9 +126,16 @@ export class AnchorManager {
     return [...this.entries.values()].map(e => ({ id: e.id, state: e.state }));
   }
 
+  /** Run a pass after `delay` (throttled); an earlier request replaces a later one. */
   schedule(delay = 0) {
-    if (this.destroyed || this.timer) return;
+    if (this.destroyed) return;
     const wait = Math.max(delay, THROTTLE_MS - (Date.now() - this.lastRun));
+    const due = Date.now() + wait;
+    if (this.timer) {
+      if (due >= this.timerDue) return;
+      clearTimeout(this.timer);
+    }
+    this.timerDue = due;
     this.timer = setTimeout(() => {
       this.timer = null;
       this.run();
@@ -207,7 +219,13 @@ export class AnchorManager {
         if (!wasOrphan) changed = true;
       }
     }
-    if (waiting) this.schedule(SETTLE_MS);
+    // Make sure skipped orphans get their retry even if the page goes quiet.
+    let nextRetry = waiting ? now + SETTLE_MS : Infinity;
+    for (const e of this.entries.values()) {
+      if (e.state.status === 'orphan' && e.nextTry < nextRetry) nextRetry = e.nextTry;
+    }
+    if (nextRetry !== Infinity) this.schedule(Math.max(0, nextRetry - now));
     if (changed) this.onChange();
+    this.onLayout();
   }
 }

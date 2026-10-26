@@ -6,7 +6,7 @@ import type { DB } from './db';
 import type { EmailQueue } from './email/queue';
 import { replyAddress } from './email/reply-token';
 import { loginEmail, notificationEmail } from './email/templates';
-import { participants } from './threads';
+import { canAccessGroup, participants } from './threads';
 import type { UserRow } from './users';
 
 export function unsubscribeSig(secret: string, userId: string): string {
@@ -39,6 +39,8 @@ export function notifyNewComment(db: DB, queue: EmailQueue, config: Config, thre
 
   for (const user of participants(db, thread.id)) {
     if (user.id === author.id || !user.notify_email) continue;
+    // People who lost access to the thread's group get nothing.
+    if (!canAccessGroup(db, user, thread.groupId)) continue;
     const content = notificationEmail({
       threadId: thread.id,
       pageTitle: thread.title,

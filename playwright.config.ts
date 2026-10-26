@@ -57,6 +57,8 @@ export default defineConfig({
         EMAIL_WORKER_INTERVAL_MS: '200',
         EXTENSION_IDS: 'igipapgffolpgikiojpjbpdngefekkbg',
         LOG_LEVEL: 'warn',
+        // Every test user signs in from 127.0.0.1.
+        LOGIN_IP_LIMIT: '10000',
       },
     },
   ],

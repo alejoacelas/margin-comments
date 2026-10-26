@@ -23,6 +23,8 @@ export interface Actions {
   discardOp(opId: string): void;
 
   saveDraft(key: string, text: string): void;
+  /** Latest draft text for a key, including saves not yet confirmed. */
+  draftText(key: string): string | undefined;
   deleteDraft(key: string): void;
   resumeDraft(draft: Draft): void;
 

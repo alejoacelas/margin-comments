@@ -21,6 +21,7 @@ import approxSearch from 'approx-string-match';
 import type { Selector, TextPositionSelector, TextQuoteSelector, RangeSelector } from '../../../shared/types';
 import { describe as hypothesisDescribe } from './hypothesis/html';
 import { matchQuoteCandidates } from './hypothesis/match-quote';
+import { renderedTextFromRange } from './hypothesis/rendered-text';
 import { TextRange } from './hypothesis/text-range';
 import { RangeAnchor, TextPositionAnchor } from './hypothesis/types';
 
@@ -171,7 +172,8 @@ export function anchorSelectors(
   }
   if (!quote || !stripWs(quote.exact)) return null;
   const exactStripped = stripWs(quote.exact);
-  const verifies = (r: Range) => !r.collapsed && stripWs(r.toString()) === exactStripped;
+  // Same text representation as the quote (scripts/styles excluded).
+  const verifies = (r: Range) => !r.collapsed && stripWs(renderedTextFromRange(r)) === exactStripped;
 
   if (rangeSel) {
     try {

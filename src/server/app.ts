@@ -6,7 +6,7 @@ import { LIMITS, PUBLIC_GROUP_ID, type ServerConfig } from '../shared/types';
 import { isValidPageKey, normalizeUrl } from '../shared/url';
 import { type Config, emailMode, googleEnabled } from './config';
 import { safeEqual } from './crypto';
-import { type DB, openDb } from './db';
+import { type DB, openDb, tx } from './db';
 import { processInbound, verifySvix } from './email/inbound';
 import { type EmailProvider, OutboxProvider, ResendProvider, RetryableEmailError } from './email/provider';
 import { EmailQueue } from './email/queue';
@@ -137,9 +137,11 @@ export type AppDeps = {
   config: Config;
   db?: DB;
   provider?: EmailProvider;
+  /** Live socket heartbeat / session re-check interval (tests shorten it). */
+  liveHeartbeatMs?: number;
 };
 
-export async function buildApp({ config, db: givenDb, provider: givenProvider }: AppDeps) {
+export async function buildApp({ config, db: givenDb, provider: givenProvider, liveHeartbeatMs }: AppDeps) {
   const db = givenDb ?? openDb(config.databasePath);
   const provider: EmailProvider =
     givenProvider ??
@@ -152,12 +154,11 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
       ? { level: 'info', redact: ['req.headers.authorization', 'req.headers.cookie'] }
       : { level: process.env.LOG_LEVEL ?? 'warn' },
     bodyLimit: 2 * 1024 * 1024,
-    trustProxy: config.trustProxy,
   });
 
   const log = (msg: string, extra?: object) => app.log.info(extra ?? {}, msg);
   const queue = new EmailQueue(db, provider, config.email.workerIntervalMs, log);
-  const hub = new LiveHub(db, token => userForToken(db, token, config.sessionDays));
+  const hub = new LiveHub(db, token => userForToken(db, token, config.sessionDays), liveHeartbeatMs);
   const limiter = new Limiter();
 
   // Keep the raw JSON body (needed to verify webhook signatures).
@@ -175,7 +176,16 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
     done(null, Object.fromEntries(new URLSearchParams(raw as string)));
   });
 
-  const clientIp = (req: FastifyRequest) => (req.headers['fly-client-ip'] as string | undefined) ?? req.ip;
+  // Behind Fly's proxy the client address is in Fly-Client-IP (set by the
+  // proxy). Without a trusted proxy, only the socket address counts: headers
+  // are client-controlled and would let anyone dodge rate limits.
+  const clientIp = (req: FastifyRequest): string => {
+    if (config.trustProxy) {
+      const fly = req.headers['fly-client-ip'];
+      if (typeof fly === 'string' && fly) return fly;
+    }
+    return req.socket.remoteAddress ?? 'unknown';
+  };
 
   await app.register(rateLimit, {
     max: 600,
@@ -239,7 +249,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
     const { email: raw } = parse(emailStartSchema, req.body);
     const email = normalizeEmail(raw);
     if (!email) throw new ApiError(400, 'invalid_email', 'That email address looks wrong');
-    if (!limiter.hit(`login-ip:${clientIp(req)}`, 20, 15 * 60_000) || recentLoginCount(db, email, 60 * 60_000) >= 6) {
+    if (!limiter.hit(`login-ip:${clientIp(req)}`, config.loginIpLimit, 15 * 60_000) || recentLoginCount(db, email, 60 * 60_000) >= 6) {
       throw new ApiError(429, 'rate_limited', 'Too many sign-in emails. Try again later.');
     }
     const { requestId, code, linkToken } = startEmailLogin(db, config.appSecret, email);
@@ -248,7 +258,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
   });
 
   app.post('/api/auth/email/verify', async req => {
-    if (!limiter.hit(`verify-ip:${clientIp(req)}`, 60, 15 * 60_000)) throw new ApiError(429, 'rate_limited');
+    if (!limiter.hit(`verify-ip:${clientIp(req)}`, config.loginIpLimit * 3, 15 * 60_000)) throw new ApiError(429, 'rate_limited');
     const input = parse(emailVerifySchema, req.body);
     const result =
       'token' in input
@@ -331,18 +341,13 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
   };
 
   app.get('/api/threads', { preHandler: requireUser }, async req => {
-    const q = req.query as Record<string, string | undefined>;
-    const groupId = groupOf(q.group);
+    const groupId = groupOf((req.query as Record<string, unknown>).group);
     if (!canAccessGroup(db, req.user!, groupId)) throw new ApiError(404, 'group_not_found');
-    const keys = (q.keys ?? '')
-      .split(',')
-      .map(k => {
-        try {
-          return decodeURIComponent(k);
-        } catch {
-          return '';
-        }
-      })
+    // Repeated `key` parameters (already decoded once by Fastify): page keys
+    // may legitimately contain commas or percent-escapes.
+    const raw = (req.query as Record<string, unknown>).key;
+    const keys = (Array.isArray(raw) ? raw : raw === undefined ? [] : [raw])
+      .filter((k): k is string => typeof k === 'string')
       .filter(isValidPageKey)
       .slice(0, 4);
     if (keys.length === 0) throw new ApiError(400, 'invalid_request', 'keys required');
@@ -381,10 +386,19 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
     return reply.code(result.created ? 201 : 200).send({ thread: result.thread });
   });
 
-  const afterNewComment = (user: UserRow, result: { thread: import('../shared/types').Thread; created: boolean; commentId: string }) => {
-    if (!result.created) return;
-    hub.publishThread(result.thread);
-    notifyNewComment(db, queue, config, result.thread, result.commentId, user);
+  /**
+   * Add a comment and queue its notifications in one transaction (a crash
+   * can't leave a comment whose notifications were never queued), then
+   * publish the change.
+   */
+  const postComment = (user: UserRow, threadId: string, comment: { id: string; body: string }, source: 'web' | 'email' = 'web') => {
+    const result = tx(db, () => {
+      const r = addComment(db, user, threadId, comment, source);
+      if (r.created) notifyNewComment(db, queue, config, r.thread, r.commentId, user);
+      return r;
+    });
+    if (result.created) hub.publishThread(result.thread);
+    return result;
   };
 
   app.post('/api/threads/:id/comments', { preHandler: requireUser }, async (req, reply) => {
@@ -392,8 +406,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
     userLimit(user, 'write', 120, 60_000);
     const threadId = parse(uuid, (req.params as { id: string }).id);
     const input = parse(addCommentSchema, req.body);
-    const result = addComment(db, user, threadId, input);
-    afterNewComment(user, result);
+    const result = postComment(user, threadId, input);
     return reply.code(result.created ? 201 : 200).send({ thread: result.thread });
   });
 
@@ -506,11 +519,10 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider }:
         db,
         secret: config.appSecret,
         replyDomain: config.email.replyDomain,
+        requireSenderAuth: config.email.requireSenderAuth,
         getUser: id => getUser(db, id),
         postComment: (userId, threadId, commentId, text) => {
-          const user = getUser(db, userId)!;
-          const result = addComment(db, user, threadId, { id: commentId, body: text }, 'email');
-          afterNewComment(user, result);
+          postComment(getUser(db, userId)!, threadId, { id: commentId, body: text }, 'email');
         },
       },
       email,

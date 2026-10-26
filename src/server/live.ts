@@ -10,6 +10,7 @@ import { publicUser, type UserRow } from './users';
 type Client = {
   socket: WebSocket;
   user: UserRow | null;
+  token: string | null;
   tokenHash: string | null;
   keys: Set<string>;
   alive: boolean;
@@ -30,10 +31,16 @@ export class LiveHub {
   constructor(
     private db: DB,
     private authenticate: (token: string) => UserRow | null,
+    heartbeatMs = 30_000,
   ) {
-    // Protocol-level pings detect dead connections (e.g. a sleeping laptop).
+    // Protocol-level pings detect dead connections (e.g. a sleeping laptop);
+    // sessions are re-checked so a revoked or expired one stops receiving.
     this.heartbeat = setInterval(() => {
       for (const c of this.clients) {
+        if (c.token && !this.authenticate(c.token)) {
+          c.socket.close(4401, 'session ended');
+          continue;
+        }
         if (!c.alive) {
           c.socket.terminate();
           continue;
@@ -45,7 +52,7 @@ export class LiveHub {
           // ignore
         }
       }
-    }, 30_000);
+    }, heartbeatMs);
     this.heartbeat.unref();
   }
 
@@ -59,7 +66,7 @@ export class LiveHub {
   }
 
   attach(socket: WebSocket) {
-    const client: Client = { socket, user: null, tokenHash: null, keys: new Set(), alive: true };
+    const client: Client = { socket, user: null, token: null, tokenHash: null, keys: new Set(), alive: true };
     this.clients.add(client);
     const authTimer = setTimeout(() => {
       if (!client.user) socket.close(4401, 'auth timeout');
@@ -99,7 +106,10 @@ export class LiveHub {
         return;
       }
       clearTimeout(authTimer);
+      // Re-authenticating as someone else must not inherit subscriptions.
+      if (client.user && client.user.id !== user.id) this.unsubscribeAll(client);
       client.user = user;
+      client.token = msg.token;
       client.tokenHash = sha256(msg.token);
       return this.send(client, { type: 'ready', user: publicUser(user) });
     }
@@ -131,6 +141,10 @@ export class LiveHub {
 
   private detach(client: Client) {
     this.clients.delete(client);
+    this.unsubscribeAll(client);
+  }
+
+  private unsubscribeAll(client: Client) {
     for (const key of client.keys) {
       const set = this.subs.get(key);
       set?.delete(client);
@@ -152,7 +166,10 @@ export class LiveHub {
     const out = new Set<Client>();
     for (const k of pageKeys) {
       if (!k) continue;
-      for (const c of this.subs.get(`${groupId}|${k}`) ?? []) out.add(c);
+      for (const c of this.subs.get(`${groupId}|${k}`) ?? []) {
+        // Membership can change after subscribing (private groups).
+        if (c.user && (groupId === PUBLIC_GROUP_ID || canAccessGroup(this.db, c.user, groupId))) out.add(c);
+      }
     }
     return out;
   }

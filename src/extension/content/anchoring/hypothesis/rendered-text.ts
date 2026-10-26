@@ -28,6 +28,11 @@ function substituteBrs(root: Element): string {
 export function renderedTextFromRange(range: Range): string {
   const container = document.createElement('div');
   container.appendChild(range.cloneContents());
+  // margin-comments: drop non-content elements (inline JSON, CSS) so quotes
+  // match what the user sees and what our quote matcher (TextIndex) searches.
+  for (const el of Array.from(container.querySelectorAll('script, style, noscript, template'))) {
+    el.remove();
+  }
   return substituteBrs(container);
 }
 

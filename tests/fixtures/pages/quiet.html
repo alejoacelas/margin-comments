@@ -1,0 +1,17 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Quiet Late Fixture</title><link rel="canonical" href="http://localhost:18902/quiet"><style>body { font: 17px/1.6 Georgia, serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; }</style></head>
+<body><main id="main"><h1>Quiet page</h1><p>Static intro paragraph that is here from the start.</p></main>
+<script>
+if (location.search.includes('late=1')) {
+  setTimeout(() => {
+    const p = document.createElement('p');
+    p.id = 'late';
+    p.textContent = 'A single paragraph inserted once, a few seconds after load, then silence.';
+    document.getElementById('main').appendChild(p);
+  }, 2500);
+} else {
+  const p = document.createElement('p');
+  p.id = 'late';
+  p.textContent = 'A single paragraph inserted once, a few seconds after load, then silence.';
+  document.getElementById('main').appendChild(p);
+}
+</script></body></html>

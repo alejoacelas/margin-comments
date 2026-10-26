@@ -39,7 +39,7 @@ export class RecordingProvider implements EmailProvider {
 
 export { PermanentEmailError, RetryableEmailError };
 
-export async function makeApp(overrides: Partial<Config> = {}) {
+export async function makeApp(overrides: Partial<Config> = {}, opts: { liveHeartbeatMs?: number } = {}) {
   const base = loadConfig();
   const config: Config = {
     ...base,
@@ -61,7 +61,7 @@ export async function makeApp(overrides: Partial<Config> = {}) {
     ...overrides,
   };
   const provider = new RecordingProvider();
-  const built = await buildApp({ config, provider });
+  const built = await buildApp({ config, provider, liveHeartbeatMs: opts.liveHeartbeatMs });
   return { ...built, provider, config };
 }
 

@@ -72,7 +72,7 @@ describe('email sign-in', () => {
 
 describe('threads', () => {
   it('requires a session', async () => {
-    const r = await t.app.inject({ method: 'GET', url: '/api/threads?keys=example.com%2Farticle' });
+    const r = await t.app.inject({ method: 'GET', url: '/api/threads?key=example.com%2Farticle' });
     expect(r.statusCode).toBe(401);
     const c = await t.app.inject({ method: 'POST', url: '/api/threads', payload: threadPayload() });
     expect(c.statusCode).toBe(401);
@@ -89,9 +89,37 @@ describe('threads', () => {
     const retry = await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: p });
     expect(retry.statusCode).toBe(200);
     for (const key of ['example.com/canonical', 'm.example.com/article']) {
-      const list = await t.app.inject({ method: 'GET', url: `/api/threads?keys=${encodeURIComponent(key)}`, headers: auth(token) });
+      const list = await t.app.inject({ method: 'GET', url: `/api/threads?key=${encodeURIComponent(key)}`, headers: auth(token) });
       expect(list.json().threads).toHaveLength(1);
     }
+  });
+
+  it('page keys with commas, escapes and unicode round-trip (decoded exactly once)', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    const keys = ['example.com/a%20b', 'example.com/x,y', 'example.com/caf%C3%A9?q=1,2'];
+    for (const key of keys) {
+      const p = threadPayload({ pageKeys: [key] });
+      expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: p })).statusCode).toBe(201);
+      const list = await t.app.inject({ method: 'GET', url: `/api/threads?key=${encodeURIComponent(key)}`, headers: auth(token) });
+      expect(list.statusCode, key).toBe(200);
+      expect(list.json().threads.map((x: { pageKey: string }) => x.pageKey), key).toEqual([key]);
+    }
+    const both = await t.app.inject({ method: 'GET', url: `/api/threads?key=${encodeURIComponent(keys[0])}&key=${encodeURIComponent(keys[1])}`, headers: auth(token) });
+    expect(both.json().threads).toHaveLength(2);
+  });
+
+  it('ignores spoofed client-IP headers when there is no trusted proxy', async () => {
+    let limited = 0;
+    for (let i = 0; i < 60; i++) {
+      const r = await t.app.inject({
+        method: 'POST',
+        url: '/api/auth/email/start',
+        headers: { 'fly-client-ip': `10.0.0.${i}`, 'x-forwarded-for': `10.0.1.${i}` },
+        payload: { email: `user${i}@example.com` },
+      });
+      if (r.statusCode === 429) limited++;
+    }
+    expect(limited).toBeGreaterThan(0);
   });
 
   it("refuses another user's id reuse", async () => {
@@ -148,7 +176,7 @@ describe('threads', () => {
 
     const delThread = await t.app.inject({ method: 'DELETE', url: `/api/comments/${p.comment.id}`, headers: auth(a.token) });
     expect(delThread.json().deletedThread).toBe(p.id);
-    const list = await t.app.inject({ method: 'GET', url: '/api/threads?keys=example.com%2Farticle', headers: auth(a.token) });
+    const list = await t.app.inject({ method: 'GET', url: '/api/threads?key=example.com%2Farticle', headers: auth(a.token) });
     expect(list.json().threads).toHaveLength(0);
     // A retried create of a deleted thread does not resurrect it.
     const recreate = await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(a.token), payload: p });
@@ -174,7 +202,7 @@ describe('threads', () => {
     const b = await signIn(t, 'bob@example.com');
     const p = threadPayload();
     await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(a.token), payload: p });
-    const list = await t.app.inject({ method: 'GET', url: '/api/threads?keys=example.com%2Farticle', headers: auth(b.token) });
+    const list = await t.app.inject({ method: 'GET', url: '/api/threads?key=example.com%2Farticle', headers: auth(b.token) });
     expect(list.body).not.toContain('alice@example.com');
   });
 
@@ -204,5 +232,38 @@ describe('pages', () => {
     expect(r.statusCode).toBe(200);
     expect(r.body).not.toContain('<script');
     expect(r.headers['x-frame-options']).toBe('DENY');
+  });
+});
+
+describe('private groups (data model readiness)', () => {
+  it('enforces membership on reads, writes, idempotent retries and notifications', async () => {
+    const a = await signIn(t, 'alice@example.com');
+    const b = await signIn(t, 'bob@example.com');
+    const c = await signIn(t, 'carol@example.com');
+    const now = new Date().toISOString();
+    t.db.prepare("INSERT INTO groups (id, name, visibility, created_at) VALUES ('g1', 'Book club', 'private', ?)").run(now);
+    for (const u of [a, c]) t.db.prepare("INSERT INTO group_members (group_id, user_id, created_at) VALUES ('g1', ?, ?)").run(u.user.id, now);
+
+    const p = threadPayload({ groupId: 'g1' });
+    expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(a.token), payload: p })).statusCode).toBe(201);
+    // Non-member: can't see or touch it.
+    expect((await t.app.inject({ method: 'GET', url: '/api/threads?group=g1&key=example.com%2Farticle', headers: auth(b.token) })).statusCode).toBe(404);
+    expect((await t.app.inject({ method: 'GET', url: '/api/threads?key=example.com%2Farticle', headers: auth(b.token) })).json().threads).toEqual([]);
+    expect((await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(b.token) })).statusCode).toBe(404);
+    expect((await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'x' } })).statusCode).toBe(404);
+    expect((await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/resolve`, headers: auth(b.token), payload: { resolved: true } })).statusCode).toBe(404);
+
+    // Alice loses membership: retries of her own earlier writes reveal nothing.
+    const replyId = randomUUID();
+    await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(a.token), payload: { id: replyId, body: 'mine' } });
+    t.db.prepare("DELETE FROM group_members WHERE group_id = 'g1' AND user_id = ?").run(a.user.id);
+    expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(a.token), payload: p })).statusCode).toBe(404);
+    expect((await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(a.token), payload: { id: replyId, body: 'mine' } })).statusCode).toBe(404);
+
+    // Carol replies: Alice (no longer a member) is not emailed.
+    t.provider.sent = [];
+    await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(c.token), payload: { id: randomUUID(), body: 'secret' } });
+    await t.queue.tick();
+    expect(t.provider.sent.filter(s => s.msg.to === 'alice@example.com')).toEqual([]);
   });
 });

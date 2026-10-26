@@ -51,6 +51,8 @@ const TRACKING_PARAMS = new Set([
   'triedredirect',
   'share_id',
   '__s',
+  // Our own "open this thread" marker (see threadLink).
+  'margin-comments',
 ]);
 
 /** Parameter name prefixes that only carry tracking data. */
@@ -155,7 +157,9 @@ export function pageIdentity(
       const cPath = new URL(c).pathname;
       const lPath = new URL(url).pathname;
       const pointsAtRoot = (cPath === '/' || cPath === '') && lPath !== '/' && lPath !== '';
-      if (!pointsAtRoot) {
+      // A hash-routed app's shell canonical would merge all its routes.
+      const dropsRoute = isRouteFragment(new URL(url).hash) && new URL(c).hash !== new URL(url).hash;
+      if (!pointsAtRoot && !dropsRoute) {
         canonicalUrl = c;
         canonicalKey = k;
       }
@@ -176,14 +180,39 @@ export function isValidPageKey(key: unknown): key is string {
 /** Fragment used in email links to open a thread on page load. */
 export const THREAD_FRAGMENT_PREFIX = 'margin-comments=';
 
+/**
+ * Link that opens the page and then the thread. Normally a fragment
+ * (`#margin-comments=<id>`, never sent to the site); for hash-routed apps,
+ * whose fragment is the route, a `margin-comments` query parameter instead
+ * (stripped from page keys, so the page identity doesn't change).
+ */
 export function threadLink(pageUrl: string, threadId: string): string {
   const url = new URL(pageUrl);
-  if (url.hash && isRouteFragment(url.hash)) return url.toString();
+  if (url.hash && isRouteFragment(url.hash)) {
+    url.searchParams.set('margin-comments', threadId);
+    return url.toString();
+  }
   url.hash = THREAD_FRAGMENT_PREFIX + threadId;
   return url.toString();
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function threadIdFromHash(hash: string): string | null {
   const m = /^#margin-comments=([0-9a-f-]{36})$/i.exec(hash);
-  return m ? m[1].toLowerCase() : null;
+  return m && UUID_RE.test(m[1]) ? m[1].toLowerCase() : null;
+}
+
+/** Thread to open from a link: fragment form or query form. */
+export function threadIdFromUrl(href: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  const fromHash = threadIdFromHash(url.hash);
+  if (fromHash) return fromHash;
+  const q = url.searchParams.get('margin-comments');
+  return q && UUID_RE.test(q) ? q.toLowerCase() : null;
 }

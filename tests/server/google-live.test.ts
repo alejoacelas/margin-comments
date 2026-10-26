@@ -153,6 +153,18 @@ describe('live updates', () => {
     other.ws.close();
   });
 
+  it('stops delivering when the session ends', async () => {
+    t = await makeApp({}, { liveHeartbeatMs: 100 });
+    const url = await listen(t);
+    const b = await signIn(t, 'bob@example.com');
+    const s = connect(url);
+    await s.opened;
+    s.ws.send(JSON.stringify({ type: 'auth', token: b.token }));
+    await s.waitFor(m => m.type === 'ready');
+    t.db.prepare('DELETE FROM sessions').run(); // expired/revoked elsewhere
+    expect(await s.closed).toBe(4401);
+  });
+
   it('rejects unauthenticated sockets', async () => {
     t = await makeApp();
     const url = await listen(t);

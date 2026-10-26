@@ -6,8 +6,14 @@
  * must not be able to cancel focusing our textarea. A non-composed copy of
  * each event is re-dispatched at its original target, so it reaches our own
  * handlers inside the shadow root and nothing outside it. Default actions
- * (typing, focusing, link navigation) come from the original trusted event,
- * and preventDefault() on the copy is forwarded to it.
+ * (typing, focusing) come from the original trusted event, and
+ * preventDefault() on the copy is forwarded to it.
+ *
+ * Clicks are different: a dispatched click has activation behavior of its own
+ * (toggling a checkbox, submitting a form, following a link), so replaying one
+ * would activate twice. Clicks are left alone here and stopped at the shadow
+ * host instead (see index.tsx), which hides them from the page's bubbling
+ * listeners while the browser activates the target exactly once.
  */
 
 declare global {
@@ -27,9 +33,6 @@ const SHIELDED = [
   'compositionend',
   'mousedown',
   'mouseup',
-  'click',
-  'dblclick',
-  'auxclick',
   'contextmenu',
   'pointerdown',
   'pointerup',

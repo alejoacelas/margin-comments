@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeUrl, pageIdentity, pageKey, threadIdFromHash, threadLink } from '../../src/shared/url';
+import { normalizeUrl, pageIdentity, pageKey, threadIdFromHash, threadIdFromUrl, threadLink } from '../../src/shared/url';
 
 describe('normalizeUrl / pageKey', () => {
   it('strips tracking params, fragments, credentials and sorts the query', () => {
@@ -53,5 +53,23 @@ describe('thread links', () => {
     expect(link).toBe(`https://example.com/a?b=1#margin-comments=${id}`);
     expect(threadIdFromHash(new URL(link).hash)).toBe(id);
     expect(threadIdFromHash('#margin-comments=nope')).toBeNull();
+  });
+});
+
+describe('hash-routed apps', () => {
+  it("ignore a shell canonical that would merge routes", () => {
+    const one = pageIdentity('https://app.test/app#/one', 'https://app.test/app');
+    const two = pageIdentity('https://app.test/app#/two', 'https://app.test/app');
+    expect(one?.keys).toEqual(['app.test/app#/one']);
+    expect(two?.keys).toEqual(['app.test/app#/two']);
+  });
+  it('thread links keep the route and still carry the thread id', () => {
+    const id = '0f8fad5b-d9cb-469f-a165-70867728950e';
+    const link = threadLink('https://app.test/app#/article/7', id);
+    expect(new URL(link).hash).toBe('#/article/7');
+    expect(threadIdFromUrl(link)).toBe(id);
+    expect(pageKey(link)).toBe('app.test/app#/article/7');
+    expect(threadIdFromUrl(`https://x.test/a#margin-comments=${id}`)).toBe(id);
+    expect(threadIdFromUrl('https://x.test/a?margin-comments=nope')).toBeNull();
   });
 });
