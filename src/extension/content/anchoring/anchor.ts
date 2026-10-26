@@ -227,6 +227,50 @@ export class TextIndex {
     return out.slice(0, count);
   }
 
+  /** The rendered text between two raw offsets (script/style excluded, as in matching). */
+  renderedSlice(start: number, end: number): string {
+    start = Math.max(0, start);
+    end = Math.min(this.rawLength, end);
+    let out = '';
+    for (let k = this.nodeAt(start); k < this.nodes.length && this.starts[k] < end; k++) {
+      if (this.skipped[k]) continue;
+      const s = this.starts[k];
+      out += this.nodes[k].data.slice(Math.max(0, start - s), Math.max(0, end - s));
+    }
+    return out;
+  }
+
+  /**
+   * Raw offsets of a DOM range, shrunk to its first and last rendered
+   * non-space characters (null if it has none or isn't in walked text).
+   */
+  trimmedRawSpan(range: Range): [number, number] | null {
+    const a = this.rawOffsetOfBoundary(range.startContainer, range.startOffset, true);
+    const b = this.rawOffsetOfBoundary(range.endContainer, range.endOffset, false);
+    if (a === null || b === null || b <= a) return null;
+    const first = this.fromRaw(a);
+    const last = this.fromRaw(b) - 1;
+    if (first >= this.rawOffsets.length || last < first) return null;
+    return [this.rawOffsets[first], this.rawOffsets[last] + 1];
+  }
+
+  /** Like rawOffsetOf, also for a boundary between nodes (an element or shadow root container). */
+  private rawOffsetOfBoundary(container: Node, offset: number, forward: boolean): number | null {
+    if (container.nodeType === Node.TEXT_NODE) return this.rawOffsetOf(container, offset);
+    // The nearest walked text node after (or before) the boundary point.
+    const probe = container.ownerDocument!.createRange();
+    probe.setStart(container, offset);
+    let best: number | null = null;
+    for (let k = 0; k < this.nodes.length; k++) {
+      const t = this.nodes[k];
+      if (t.getRootNode() !== container.getRootNode()) continue;
+      const cmp = probe.comparePoint(t, 0);
+      if (forward && cmp >= 0) return this.starts[k];
+      if (!forward && cmp < 0) best = this.starts[k] + t.length;
+    }
+    return forward ? null : best;
+  }
+
   /** The raw text between two raw offsets (as `textContent` would have it). */
   rawSlice(start: number, end: number): string {
     start = Math.max(0, start);
@@ -314,6 +358,17 @@ export function describeRange(root: Element, range: Range): Description | null {
   const inShadow = range.commonAncestorContainer.getRootNode() instanceof ShadowRoot;
   if (inShadow ? !composedContains(root, range.commonAncestorContainer) : !root.contains(range.commonAncestorContainer)) return null;
   if (!range.toString().trim()) return null;
+  if (inShadow) {
+    // Hypothesis's trimming needs element parents (text can sit directly
+    // under a shadow root): trim through the index instead.
+    const index = new TextIndex(root);
+    const span = index.trimmedRawSpan(range);
+    const trimmedRange = span && index.rangeFor(span[0], span[1]);
+    if (!span || !trimmedRange) return null;
+    const sels = describeWithIndex(index, trimmedRange, span);
+    const q = sels?.find((s): s is TextQuoteSelector => s.type === 'TextQuoteSelector');
+    return sels && q && stripWs(q.exact) ? { selectors: sels, quote: collapseWs(q.exact), range: trimmedRange } : null;
+  }
   let trimmed: Range;
   try {
     trimmed = TextRange.trimmedRange(range);
@@ -321,9 +376,7 @@ export function describeRange(root: Element, range: Range): Description | null {
     return null;
   }
   let selectors: Selector[] | null;
-  if (inShadow) {
-    selectors = describeWithIndex(new TextIndex(root), trimmed);
-  } else if (!hasOpenShadowRoot(root)) {
+  if (!hasOpenShadowRoot(root)) {
     selectors = hypothesisDescribe(root, trimmed);
   } else {
     // A page with web components: its rendered text (which matching uses)
@@ -351,16 +404,18 @@ function hasOpenShadowRoot(root: Element): boolean {
  * text inside web components (where Hypothesis's light-DOM describe can't
  * reach, and XPath can't cross a shadow boundary) and on pages that have them.
  */
-function describeWithIndex(index: TextIndex, range: Range): Selector[] | null {
-  const start = index.rawOffsetOf(range.startContainer, range.startOffset);
-  const end = index.rawOffsetOf(range.endContainer, range.endOffset);
+function describeWithIndex(index: TextIndex, range: Range, span?: [number, number]): Selector[] | null {
+  const start = span ? span[0] : index.rawOffsetOf(range.startContainer, range.startOffset);
+  const end = span ? span[1] : index.rawOffsetOf(range.endContainer, range.endOffset);
   if (start === null || end === null || end <= start) return null;
   const CONTEXT = 32;
   return [
     { type: 'TextPositionSelector', start, end },
     {
       type: 'TextQuoteSelector',
-      exact: index.rawSlice(start, end),
+      // Rendered text only: an inline <script>/<style> inside the selection
+      // isn't part of the quote (and must never be published with it).
+      exact: index.renderedSlice(start, end),
       // Context from rendered text (components often start with a <style>),
       // as matching sees it.
       prefix: index.renderedAround(start, CONTEXT, 'before'),

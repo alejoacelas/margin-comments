@@ -311,3 +311,38 @@ test('repeated slotted text in identical components re-anchors to its own compon
   expect(res).toBe('c2');
 });
 
+test('on a page with web components, a quote never includes inline script text', async ({ page }) => {
+  await load(page, `<main><p id="p1">First paragraph of the article text.</p><script>window.adConfiguration = "sidebar-ad-slot";</script><p id="p2">Second paragraph continues the article.</p><x-w></x-w></main>`);
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    document.querySelector('x-w')!.attachShadow({ mode: 'open' }).innerHTML = '<p>Unrelated widget</p>';
+    const r = document.createRange();
+    r.setStart(document.getElementById('p1')!.firstChild!, 6);
+    r.setEnd(document.getElementById('p2')!.firstChild!, 17);
+    const desc = mc.describeRange(document.body, r);
+    const out = mc.anchorSelectors(document.body, desc.selectors);
+    const q = desc.selectors.find((s: any) => s.type === 'TextQuoteSelector');
+    return { exact: q.exact, quote: desc.quote, anchored: !!out };
+  });
+  expect(res.exact).not.toContain('adConfiguration');
+  expect(res.quote).toBe('paragraph of the article text.Second paragraph');
+  expect(res.anchored).toBe(true);
+});
+
+test('text placed directly in a shadow root (no element around it) can be commented on', async ({ page }) => {
+  await load(page, `<main><p>Before.</p><x-label></x-label></main>`);
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const root = document.querySelector('x-label')!.attachShadow({ mode: 'open' });
+    root.textContent = 'This is the visible web component label.';
+    const t = root.firstChild as Text;
+    const r = document.createRange();
+    r.setStart(t, 0);
+    r.setEnd(t, 'This is the visible '.length); // trailing space trimmed
+    const desc = mc.describeRange(document.body, r);
+    const out = desc && mc.anchorSelectors(document.body, desc.selectors);
+    return { quote: desc && desc.quote, anchored: out && out.range.toString() };
+  });
+  expect(res).toEqual({ quote: 'This is the visible', anchored: 'This is the visible' });
+});
+

@@ -114,9 +114,9 @@ Reliability was the main goal. Highlights:
   changes go to a persistent outbox in the extension and are retried until the server accepts
   them (offline, server down, service worker restarted); anything that can't be saved stays
   visible with *Copy text*.
-- **Tests**: 54 end-to-end Playwright tests with the real extension (two users, live sync,
+- **Tests**: 55 end-to-end Playwright tests with the real extension (two users, live sync,
   email notify and reply through a fake Resend, offline, service worker restart, SPAs, CSP,
-  hostile pages, account switching, the closed production build, plain-HTTP and sandboxed pages), 81 server/unit tests, the anchoring corpus plus anchoring
+  hostile pages, account switching, the closed production build, plain-HTTP and sandboxed pages), 82 server/unit tests, the anchoring corpus plus anchoring
   regression and large-page performance tests, and a production smoke test on real sites
   (Wikipedia, GitHub, Hacker News, MDN). Every adversarial review round is logged in
   [`REVIEW.md`](REVIEW.md).

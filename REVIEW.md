@@ -278,3 +278,14 @@ Reviewer C found nothing material.
 | A1 | On pages with web components, light-DOM selections (e.g. slotted text) got light-DOM positions and context while matching uses the rendered text, so a repeated slotted quote could re-anchor in another component | Fixed | On pages with open shadow roots, position and context come from the rendered-text index for every selection (XPath kept as a hint); pages without components are unchanged (corpus unchanged). Anchoring regression "repeated slotted text in identical components…"; verified to fail without the fix |
 | B1 | HTML-only Gmail replies: skipping the whole `gmail_quote` / `gmail_extra` wrapper dropped answers written inside it | Fixed | The wrappers are rendered; their blockquotes become `> ` lines and the "On … wrote:" line is handled by the text rules. `email.test.ts` "HTML-only Gmail replies keep answers…"; verified to fail without the fix |
 
+## Round 21 — full repository (2026-10-26)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | On pages with web components, a quote built from the index included inline `<script>`/`<style>` text inside the selection (could orphan the thread, or publish page data) | Fixed | Quotes come from rendered text only; positions stay raw. Anchoring regression "on a page with web components, a quote never includes inline script text" |
+| A2 | Text placed directly in a shadow root (no element parent) couldn't be commented on (Hypothesis's trimming needs element parents) | Fixed | Selections inside shadow roots are trimmed and described through the index. Anchoring regression "text placed directly in a shadow root…" |
+| B1 | HTML-only replies dropped link destinations ("my proposal" without its URL) | Fixed | Links keep their URL unless the text is the URL. `email.test.ts` "HTML replies keep where links go" |
+| C1 | Switching accounts directly (e.g. confirming another account's link in another tab) kept the previous account's open name editor and its unsaved text; Enter would save it to the new account | Fixed | The account panel is keyed by account. e2e "switching accounts drops the previous account's unsaved name edit" |
+
+All four regressions verified to fail on the previous code.
+

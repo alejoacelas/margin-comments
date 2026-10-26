@@ -195,3 +195,25 @@ test("someone else's sign-in link doesn't switch accounts without asking", async
   await expect(verify.locator('#mc-verify')).toHaveAttribute('data-state', 'done');
   expect(await signedInAs()).toBe(mallory);
 });
+
+test("switching accounts drops the previous account's unsaved name edit", async ({ alice }) => {
+  const a = await alice.open(uniquePath('article'));
+  await alice.signIn(a);
+  await alice.openSidebar(a);
+  await a.locator('.me .who .n').click();
+  const name = a.frameLocator('iframe[data-testid=name-input-frame]').locator('[data-testid=name-input]');
+  await name.fill('Alice Unsaved Rename');
+  // In another tab, confirm someone else's sign-in link: this browser switches accounts.
+  const mallory = `mallory-${Date.now()}@example.com`;
+  const since = Date.now();
+  await fetch(`${API}/api/auth/email/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: mallory }) });
+  const mail = await waitForEmail(mallory, m => /sign-in code/.test(m.subject), since);
+  const verify = await alice.open(/(http:\/\/localhost:\d+\/auth\/verify#token=[\w-]+)/.exec(mail.text)![1]);
+  await verify.locator('#mc-verify-confirm').click();
+  await expect(verify.locator('#mc-verify')).toHaveAttribute('data-state', 'done');
+  // The first tab now shows the new account, without Alice's editor or text.
+  await expect(a.locator('.me .who')).toContainText(mallory);
+  await expect(a.locator('iframe[data-testid=name-input-frame]')).toHaveCount(0);
+  await expect(a.locator('.me .who')).not.toContainText('Alice Unsaved Rename');
+});
+

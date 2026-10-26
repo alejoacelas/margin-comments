@@ -87,7 +87,8 @@ function htmlToText(html: string): string {
   return convert(unwrapDocuments(cutHtmlHistory(html)), {
     wordwrap: false,
     selectors: [
-      { selector: 'a', options: { ignoreHref: true } },
+      // Keep where a link goes ("my proposal [https://…]"), unless the text is the URL.
+      { selector: 'a', options: { hideLinkHrefIfSameAsText: true } },
       { selector: 'img', format: 'skip' },
       { selector: 'div.gmail_signature', format: 'skip' },
       { selector: 'div#divRplyFwdMsg', format: 'skip' },

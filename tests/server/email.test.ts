@@ -196,6 +196,10 @@ describe('extractReply', () => {
     const extra = '<div dir="ltr">Top.</div><div class="gmail_extra"><br><div class="gmail_quote">On Mon, Bob wrote:<blockquote class="gmail_quote">old</blockquote></div></div>';
     expect(extractReply(null, extra)).toBe('Top.');
   });
+  it('HTML replies keep where links go', () => {
+    expect(extractReply(null, '<p>See <a href="https://example.com/proposal">my proposal</a>.</p>')).toBe('See my proposal [https://example.com/proposal].');
+    expect(extractReply(null, '<p>At <a href="https://example.com/x">https://example.com/x</a></p>')).toBe('At https://example.com/x');
+  });
   it('returns empty for a quote-only reply', () => {
     expect(extractReply('\n\nOn Mon, Oct 26, 2026 Margin <x@y.z> wrote:\n> hi', null)).toBe('');
   });

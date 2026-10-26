@@ -194,6 +194,7 @@ function Account({ user, actions }: { user: Me; actions: Actions }) {
               maxLength={80}
               placeholder="Your name"
               label="Display name"
+              testId="name-input"
               autoFocus
               actions={actions}
               onChange={setName}
@@ -446,7 +447,8 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
               {state.ops.some(o => o.status === 'pending') ? 'Offline. Your changes are saved and will sync when you reconnect.' : 'Offline. Reconnecting…'}
             </div>
           ) : null}
-          <Account user={state.user} actions={actions} />
+          {/* Keyed by account: switching accounts drops the previous one's name editor. */}
+          <Account key={state.user.id} user={state.user} actions={actions} />
         </div>
       ) : null}
     </Layer>
