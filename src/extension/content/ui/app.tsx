@@ -274,7 +274,7 @@ function DraftRow({ draft, actions, note }: { draft: Draft; actions: Actions; no
         <button class="link-btn muted" onClick={() => actions.copy(draft.text)}>
           Copy text
         </button>
-        <button class="link-btn muted" onClick={() => actions.deleteDraft(draft.key, [draft.text])}>
+        <button class="link-btn muted" onClick={() => actions.deleteDraft(draft.key, [draft.text], { onlyTexts: true })}>
           Discard
         </button>
       </div>

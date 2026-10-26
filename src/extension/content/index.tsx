@@ -737,7 +737,13 @@ class MarginComments implements Actions {
    * given texts (what the user was looking at when discarding) — never a
    * different text another tab saved meanwhile.
    */
-  deleteDraft(key: string, texts: string[] = []) {
+  deleteDraft(key: string, texts: string[] = [], opts: { onlyTexts?: boolean } = {}) {
+    if (opts.onlyTexts) {
+      // A specific saved draft (e.g. a row under "Unsent drafts"): leave this
+      // tab's own draft for the same key alone.
+      void this.port.call('deleteDraft', { key, texts }).catch(() => {});
+      return;
+    }
     const slot = this.slot(key);
     const entry = this.draftTimers.get(slot);
     if (entry?.timer) clearTimeout(entry.timer);

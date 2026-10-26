@@ -295,6 +295,15 @@ test('reply drafts typed in two tabs both survive', async ({ alice }) => {
   expect(['Reply typed in tab one', 'Different reply from tab two']).toContain(shown);
   const other = shown === 'Reply typed in tab one' ? 'Different reply from tab two' : 'Reply typed in tab one';
   await expect(c.locator('[data-testid=draft-row]')).toContainText(other);
+  // This tab edits its draft, then discards the other tab's: its own stays.
+  await box.fill(`${shown} (edited in tab three)`);
+  await c.waitForTimeout(700);
+  await c.locator('[data-testid=draft-row]').filter({ hasText: other }).getByRole('button', { name: 'Discard', exact: true }).click();
+  await expect(c.locator('[data-testid=draft-row]').filter({ hasText: other })).toHaveCount(0);
+  await c.waitForTimeout(300);
+  await c.reload();
+  const again = await open(c);
+  await expect(again).toHaveValue(`${shown} (edited in tab three)`);
 });
 
 test('restored drafts can be discarded, and cancelling never deletes a draft another open tab owns', async ({ alice }) => {
