@@ -12,7 +12,7 @@ import { type EmailProvider, OutboxProvider, PermanentEmailError, ResendProvider
 import { EmailQueue } from './email/queue';
 import { consumeState, exchangeCode, googleIsAuthoritative, isAllowedExtensionRedirect, startGoogle } from './google';
 import { LiveHub } from './live';
-import { checkUnsubscribeSig, notificationStillWanted, notifyNewComment, queueLoginEmail } from './notifications';
+import { checkUnsubscribeSig, notificationStillWanted, notifyNewComment, queueLoginEmail, queueReplyNotPosted } from './notifications';
 import { homePage, messagePage, outboxPage, PAGE_CSP, unsubscribePage, verifyPage } from './pages';
 import {
   addComment,
@@ -536,6 +536,13 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
         replyDomain: config.email.replyDomain,
         requireSenderAuth: config.email.requireSenderAuth,
         getUser: id => getUser(db, id),
+        commentRoom: (threadId, ids) => {
+          const { n } = db.prepare('SELECT COUNT(*) AS n FROM comments WHERE thread_id = ? AND deleted_at IS NULL').get(threadId) as { n: number };
+          const present = ids.length
+            ? (db.prepare(`SELECT COUNT(*) AS n FROM comments WHERE thread_id = ? AND id IN (${ids.map(() => '?').join(',')})`).get(threadId, ...ids) as { n: number }).n
+            : 0;
+          return LIMITS.threadComments - n - (ids.length - present);
+        },
         postComment: (userId, threadId, commentId, text) => {
           return postComment(getUser(db, userId)!, threadId, { id: commentId, body: text }, 'email').created;
         },
@@ -543,6 +550,10 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
       email,
     );
     req.log.info({ emailId, status: outcome.status, reason: outcome.status === 'rejected' ? outcome.reason : undefined }, 'inbound email');
+    if (outcome.status === 'rejected' && outcome.returnToSender) {
+      const r = outcome.returnToSender;
+      queueReplyNotPosted(queue, config, emailId, r.to, r.reason, r.text);
+    }
     return { status: outcome.status };
   });
 

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openDb } from '../../src/server/db';
+import { LIMITS } from '../../src/shared/types';
 import { verifySvix, signSvix } from '../../src/server/email/inbound';
 import { ResendProvider, PermanentEmailError, RetryableEmailError } from '../../src/server/email/provider';
 import { EmailQueue } from '../../src/server/email/queue';
@@ -511,6 +512,27 @@ describe('notifications and inbound replies (through the API)', () => {
     const final = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
     expect(final.comments.map((c: { body: string }) => c.body)).toEqual(['First!', 'ping', 'pong', 'gray but signed', 'once', 'replayed?', 'after a hiccup']);
     expect(JSON.stringify(final)).not.toContain('forged');
+  });
+
+  it('an email reply that does not fit a thread posts nothing and goes back to its (verified) sender', async () => {
+    const { a, b, p } = await setup();
+    t.provider.sent = [];
+    await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'ping' } });
+    await t.queue.tick();
+    const replyTo = t.provider.sent.find(s => s.msg.to === 'alice@example.com')!.msg.replyTo!;
+    // Fill the thread to one below the cap.
+    for (let i = 3; i < LIMITS.threadComments; i++) {
+      await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(a.token), payload: { id: randomUUID(), body: `c${i}` } });
+    }
+    t.provider.sent = [];
+    const long = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'a'.repeat(10_000) + '\n\nIMPORTANT TAIL' });
+    const res = await deliver(long);
+    expect(res.json().status).toBe('rejected');
+    const thread = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
+    expect(thread.comments.length).toBe(LIMITS.threadComments - 1);
+    await t.queue.tick();
+    const back = t.provider.sent.find(s => s.msg.to === 'alice@example.com' && /couldn.t be posted/.test(s.msg.subject));
+    expect(back?.msg.text).toContain('IMPORTANT TAIL');
   });
 
   it('unsubscribe links are signed and work with one-click POST', async () => {

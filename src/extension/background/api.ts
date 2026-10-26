@@ -44,11 +44,20 @@ export async function api<T>(
   } catch (err) {
     throw new TransientError(`network: ${(err as Error).message}`);
   }
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (err) {
+    // The connection dropped after the headers: the request may or may not
+    // have taken effect, so retry it (all writes are idempotent).
+    throw new TransientError(`network (body): ${(err as Error).message}`);
+  }
   let json: any = null;
   try {
-    json = await res.json();
+    json = text ? JSON.parse(text) : null;
   } catch {
-    // empty or non-JSON body
+    // A success with a garbled body (e.g. a proxy page): retry rather than use it.
+    if (res.ok) throw new TransientError('unreadable response');
   }
   if (res.ok) return json as T;
   if (res.status >= 500 || res.status === 429 || res.status === 408) {

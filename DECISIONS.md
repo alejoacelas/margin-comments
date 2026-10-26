@@ -195,7 +195,10 @@ Choices made while building this without supervision, with the reasoning.
   (the webhook has no body). Accepted only if the address verifies, the `From` matches the
   account, and Resend's own SPF/DKIM/DMARC verdict is positive (the message's
   Authentication-Results header is sender-controlled and ignored). Auto-replies are ignored.
-  Comment ids derive from the email id, so redeliveries never double-post.
+  Comment ids derive from the email id, so redeliveries never double-post. A long reply is
+  posted as consecutive comments, all or none (checked against the thread's comment cap first);
+  a verified sender whose reply can't be posted (thread full or gone) gets an email with the
+  reason and their text.
 - **Reply text:** our own rules only, each linear in the input: history headers (Gmail/Apple/
   Thunderbird/localized "On … wrote:", after which `>`-quoted history is dropped but answers
   between quotes are kept; Outlook separators and `From:/Sent:` blocks, after which everything
@@ -212,7 +215,8 @@ Choices made while building this without supervision, with the reasoning.
 - **All network from the background worker** (one WebSocket, all fetches), so page CSPs never
   apply and host pages see no failed requests in their console.
 - **Outbox in `chrome.storage.local`**: changes are persisted before the UI is told they're
-  queued; client-generated UUIDs make every create idempotent; failed changes stay visible with
+  queued; client-generated UUIDs make every create idempotent (so a response lost or cut off
+  mid-body is simply retried); failed changes stay visible with
   Retry / Copy text / Discard.
 - **Drafts** saved as you type (debounced), kept until the worker confirms, flushed on
   `pagehide`. Drafts belong to an account and to the tab that wrote them (one slot per tab), so

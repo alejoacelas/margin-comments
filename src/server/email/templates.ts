@@ -42,6 +42,27 @@ ${inner}
 </div></body></html>`;
 }
 
+/** A verified email reply that couldn't be posted: say why and give the text back. */
+export function replyNotPostedEmail(input: { reason: string; text: string }) {
+  const subject = 'Your reply couldn\u2019t be posted';
+  const text = [
+    `Your email reply couldn't be posted to the thread: ${input.reason}`,
+    '',
+    'Here is what you wrote, so nothing is lost:',
+    '',
+    input.text,
+  ].join('\n');
+  const html = layout(
+    `<div style="font-size:13px;color:${MUTED};margin-bottom:6px;">Margin Comments</div>
+<div style="font-size:17px;margin-bottom:12px;">Your reply couldn\u2019t be posted</div>
+<div style="margin-bottom:16px;">${esc(input.reason)}</div>
+<div style="font-size:13px;color:${MUTED};margin-bottom:6px;">What you wrote:</div>
+<div style="white-space:pre-wrap;border-left:3px solid #eee;padding-left:10px;">${esc(input.text)}</div>`,
+    'You get this only when a reply you sent from your own address couldn\u2019t be posted.',
+  );
+  return { subject, text, html };
+}
+
 export type LoginEmailInput = { code: string; link: string; minutes: number };
 
 export function loginEmail(input: LoginEmailInput) {

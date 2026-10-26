@@ -389,3 +389,14 @@ here and treated as a finding:
 |---|---------|---------|------------|
 | B1 | **One account could store 200 threads with ~100 KB quotes on a page; listing that page then built a ~79 MB response and ~600 MB of memory (the machine has 512 MB)** | Fixed | Quotes capped at 50,000 characters, selectors at 120 KB, threads at 100 comments; thread lists also paged by size (~2 MB) before serializing; the extension loads at most 20 pages. `api.test.ts` "thread pages are bounded by size, and every thread is still reachable" and "a thread holds at most 100 comments"; both verified to fail on the previous code |
 
+## Round 31 — full repository (2026-10-26)
+
+Reviewer A found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| B1 | A long email reply hitting the new 100-comment cap was posted partly (its tail silently dropped) and the webhook reported success | Fixed | Capacity is checked for all parts before posting (all or nothing); a verified sender whose reply can't be posted gets an email with the reason and their full text. `email.test.ts` "an email reply that does not fit a thread posts nothing and goes back to its (verified) sender" |
+| C1 | A success response whose body was cut off came back as `null`, so the queued write failed permanently instead of being retried | Fixed | Body read failures and unreadable success bodies are transient (the write is idempotent and retried). `tests/unit/api.test.ts` |
+
+Both verified to fail on the previous code.
+

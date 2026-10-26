@@ -51,13 +51,20 @@ export function verifySvix(
 export type InboundOutcome =
   | { status: 'posted'; threadId: string; commentId: string; userId: string; body: string }
   | { status: 'duplicate' }
-  | { status: 'rejected'; reason: string };
+  | {
+      status: 'rejected';
+      reason: string;
+      /** A verified sender's reply that couldn't be posted: tell them, with their text. */
+      returnToSender?: { to: string; threadId: string; reason: string; text: string };
+    };
 
 export type InboundDeps = {
   db: DB;
   secret: string;
   replyDomain: string;
   getUser: (id: string) => { id: string; email: string } | null;
+  /** Room left in the thread after adding comments with these ids (already-posted ids take none); negative: they don't fit. */
+  commentRoom?: (threadId: string, ids: string[]) => number;
   /** Reject replies whose sender authentication is missing or inconclusive. */
   requireSenderAuth: boolean;
   /** Post a comment as `userId`; false if it already existed. Throws on failure. */
@@ -146,18 +153,28 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
   // nothing the sender wrote is dropped.
   const parts = splitLongText(body, LIMITS.commentBody);
   const commentId = uuidFrom('inbound-message', baseId);
+  const ids = parts.map((_, i) => (i === 0 ? commentId : uuidFrom('inbound-message', `${baseId}#${i}`)));
+  const returnToSender = (reason: string) =>
+    verdict === 'pass' ? { to: user.email, threadId: target.threadId, reason, text: body } : undefined;
+  // All of a reply or none of it: never a silently cut-off tail.
+  if (deps.commentRoom && deps.commentRoom(target.threadId, ids) < 0) {
+    return { status: 'rejected', reason: 'thread is full', returnToSender: returnToSender('The thread is full (it has the maximum number of comments).') };
+  }
   try {
     let created = false;
     parts.forEach((part, i) => {
-      const id = i === 0 ? commentId : uuidFrom('inbound-message', `${baseId}#${i}`);
-      if (deps.postComment(user.id, target.threadId, id, part)) created = true;
+      if (deps.postComment(user.id, target.threadId, ids[i], part)) created = true;
     });
     if (!created) return { status: 'duplicate' };
   } catch (err) {
     // Permanent API outcomes (thread deleted, no access) are recorded; anything
     // else propagates so the webhook answers 500 and Resend redelivers.
     if (typeof (err as { status?: unknown }).status === 'number') {
-      return { status: 'rejected', reason: `could not post: ${(err as Error).message}` };
+      return {
+        status: 'rejected',
+        reason: `could not post: ${(err as Error).message}`,
+        returnToSender: returnToSender((err as Error).message || 'The thread is no longer available.'),
+      };
     }
     throw err;
   }

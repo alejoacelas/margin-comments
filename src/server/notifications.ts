@@ -5,7 +5,7 @@ import { base32Encode, hmac, safeEqual } from './crypto';
 import type { DB } from './db';
 import type { EmailQueue } from './email/queue';
 import { replyAddress } from './email/reply-token';
-import { loginEmail, notificationEmail } from './email/templates';
+import { loginEmail, notificationEmail, replyNotPostedEmail } from './email/templates';
 import { canAccessGroup, participants } from './threads';
 import { isUnboundEmail, type UserRow } from './users';
 
@@ -77,6 +77,11 @@ export function notifyNewComment(db: DB, queue: EmailQueue, config: Config, thre
       `notify/${commentId}/${user.id}`,
     );
   }
+}
+
+export function queueReplyNotPosted(queue: EmailQueue, config: Config, emailId: string, to: string, reason: string, text: string) {
+  const content = replyNotPostedEmail({ reason, text });
+  queue.enqueue('reply-not-posted', { to, from: fromAddress(config), subject: content.subject, text: content.text, html: content.html }, `reply-not-posted/${emailId}`);
 }
 
 export function queueLoginEmail(queue: EmailQueue, config: Config, to: string, requestId: string, code: string, linkToken: string) {
