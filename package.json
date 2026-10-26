@@ -18,7 +18,7 @@
     "test:e2e": "playwright test",
     "test:anchoring": "playwright test --project=anchoring",
     "dev:server": "node scripts/build-server.mjs && node --env-file-if-exists=.env.local build/server/index.js",
-    "test:smoke": "playwright test --config tests/smoke/playwright.config.ts",
+    "test:smoke": "node scripts/build-extension.mjs --out build/ext-smoke --test-open-shadow --no-zip && playwright test --config tests/smoke/playwright.config.ts",
     "deploy": "fly deploy --remote-only --app margin-comments"
   },
   "dependencies": {

@@ -9,7 +9,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const API = process.env.SMOKE_API ?? 'https://margin-comments.fly.dev';
-const DIST = resolve('dist');
+// Production API, but an open shadow root so Playwright can drive the UI
+// (built by `npm run test:smoke`).
+const DIST = resolve('build/ext-smoke');
 const PAGE = 'https://example.com/';
 
 async function launch() {

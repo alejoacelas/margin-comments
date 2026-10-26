@@ -39,7 +39,7 @@ npm run test:unit          # vitest: tests/unit + tests/server (~1 s)
 npm run test:e2e           # Playwright e2e (~1 min); builds build/ext-test itself
 npm run test:anchoring     # corpus (~10 s)
 npm test                   # all of the above
-npm run test:smoke         # against production; needs ADMIN_TOKEN in env (source .env)
+npm run test:smoke         # against production (own build with an open shadow root); needs ADMIN_TOKEN (source .env)
 ```
 
 The e2e build (`build/ext-test`) uses an open shadow root so Playwright can drive the UI;
