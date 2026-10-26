@@ -246,6 +246,14 @@ export class AnchorManager {
               e.state = { status: 'anchored', range: alt.range, fuzzy: alt.quoteScore < 1 };
               e.anchoredText = stripWs(alt.range.toString());
               changed = true;
+            } else if (!alt) {
+              // Hidden with no shown copy (e.g. a collapsed section): listed as
+              // orphaned; showing it again triggers a retry.
+              e.state = { status: 'orphan' };
+              e.tries = 1;
+              e.nextTry = now + 2000;
+              e.failedAtLength = 0;
+              changed = true;
             }
           } catch {
             // keep the current anchor

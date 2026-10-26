@@ -474,3 +474,46 @@ test('hidden display:contents text and closed <details> bodies stay out of selec
   expect(quotes).toEqual(['Shown despite a hidden parent.', 'Body of an open details element.']);
 });
 
+test("a closed web component's hidden or unslotted children stay out of selectors", async ({ page }) => {
+  // Text directly in the hosts: no element of its own for checkVisibility to judge.
+  await load(page, `<main><x-tabs>private account info</x-tabs><p id="p">Public article text.</p><x-card>unslotted secret text</x-card></main>`);
+  const json = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    // Content scripts reach closed roots through chrome.dom; stand in for it here.
+    const w = window as any;
+    w.chrome = w.chrome ?? {};
+    w.chrome.dom = { openOrClosedShadowRoot: (el: any) => el.__closedRoot ?? null };
+    const tabs = document.querySelector('x-tabs') as any;
+    tabs.__closedRoot = tabs.attachShadow({ mode: 'closed' });
+    tabs.__closedRoot.innerHTML = '<p>Tab header.</p><slot style="display:none"></slot>';
+    const card = document.querySelector('x-card') as any;
+    card.__closedRoot = card.attachShadow({ mode: 'closed' });
+    card.__closedRoot.innerHTML = '<p>Card without a slot.</p>';
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('p')!);
+    return JSON.stringify(mc.describeRange(document.body, r).selectors);
+  });
+  expect(json).not.toContain('private account');
+  expect(json).not.toContain('unslotted secret');
+});
+
+test('a thread on a passage that gets collapsed is orphaned, and comes back when it opens', async ({ page }) => {
+  await load(page, `<main><p>Intro paragraph here.</p><details id="d" open><summary>More</summary><p id="in">Text inside a section that will collapse.</p></details></main>`);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('in')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 15_000 }).toBe('anchored');
+  await page.evaluate(() => ((document.getElementById('d') as HTMLDetailsElement).open = false));
+  await expect.poll(status, { timeout: 15_000 }).toBe('orphan');
+  await page.evaluate(() => ((document.getElementById('d') as HTMLDetailsElement).open = true));
+  await expect.poll(status, { timeout: 15_000 }).toBe('anchored');
+});
+

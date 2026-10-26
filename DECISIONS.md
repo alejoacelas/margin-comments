@@ -28,7 +28,9 @@ Choices made while building this without supervision, with the reasoning.
   `<script>/<style>/<noscript>/<template>/<textarea>` (a textarea's children are its initial
   value, not what it shows) and text that isn't rendered (`hidden`, `display:none`,
   `visibility:hidden`, `content-visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text
-  renders in, i.e. its slot when slotted, looking through `display:contents`). The line is the
+  renders in, i.e. its slot when slotted (for closed web components found through
+  `chrome.dom.openOrClosedShadowRoot`; a child no slot shows isn't rendered), looking through
+  `display:contents`). The line is the
   browser's own notion of "rendered", as `innerText` uses it: text that is rendered but
   concealed (transparent, clipped, off-screen, visually hidden for screen readers, same color as
   the background) still counts as page text; excluding it would make anchors flicker during

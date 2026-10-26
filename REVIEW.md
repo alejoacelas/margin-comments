@@ -359,3 +359,14 @@ Anchoring regression "hidden display:contents text and closed <details> bodies s
 
 All verified to fail on the previous code.
 
+## Round 28 — full repository (2026-10-26)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **Text placed directly in a host with a closed shadow root (slotted into a hidden slot, or not slotted at all) was judged by the visible host and could enter stored context** | Fixed | The content script finds closed roots via `chrome.dom.openOrClosedShadowRoot` and judges such children through the slot that shows them (none: not rendered). Anchoring regression "a closed web component's hidden or unslotted children stay out of selectors" |
+| A2 | A thread whose passage got collapsed stayed "anchored" (no highlight, no "Text not found") | Fixed | If the hidden passage has no rendered match left, the thread becomes an orphan and retries when something is shown. Anchoring regression "a thread on a passage that gets collapsed is orphaned, and comes back when it opens" |
+
+Both verified to fail on the previous code; corpus unchanged.
+

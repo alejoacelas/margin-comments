@@ -47,26 +47,34 @@ const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA'
  * a closed <details> shows only its <summary> (text directly inside it has
  * no element of its own for checkVisibility to judge).
  */
-export function nodeShown(node: Node, cache?: Map<Element, boolean>): boolean {
-  const el = renderingParent(node);
+export function nodeShown(node: Node, cache: VisibilityCache = newVisibilityCache()): boolean {
+  const el = renderingParent(node, cache);
+  if (el === undefined) return false;
   if (!el) return true;
   if (closedDetailsHides(el, node) || contentHidden(el)) return false;
   if (getComputedStyle(el).visibility !== 'visible') return false;
   return rendered(el, cache);
 }
 
-function rendered(el: Element, cache?: Map<Element, boolean>): boolean {
-  const cached = cache?.get(el);
+/** Per-pass memo for visibility checks (styles don't change within one). */
+export type VisibilityCache = { shown: Map<Element, boolean>; closedRoots: Map<Element, ShadowRoot | null> };
+
+export function newVisibilityCache(): VisibilityCache {
+  return { shown: new Map(), closedRoots: new Map() };
+}
+
+function rendered(el: Element, cache: VisibilityCache): boolean {
+  const cached = cache.shown.get(el);
   if (cached !== undefined) return cached;
   let shown: boolean;
   if (typeof el.checkVisibility !== 'function') shown = true;
   else if (getComputedStyle(el).display === 'contents') {
-    const parent = renderingParent(el);
-    shown = !parent || (!closedDetailsHides(parent, el) && !contentHidden(parent) && rendered(parent, cache));
+    const parent = renderingParent(el, cache);
+    shown = parent === null || (parent !== undefined && !closedDetailsHides(parent, el) && !contentHidden(parent) && rendered(parent, cache));
   } else {
     shown = el.checkVisibility({ contentVisibilityAuto: false } as CheckVisibilityOptions);
   }
-  cache?.set(el, shown);
+  cache.shown.set(el, shown);
   return shown;
 }
 
@@ -81,11 +89,41 @@ function closedDetailsHides(parent: Element, child: Node): boolean {
   return !(child instanceof Element && child.localName === 'summary' && parent.querySelector(':scope > summary') === child);
 }
 
-/** Where a node renders: its slot if slotted into a web component, else its parent (or shadow host). */
-function renderingParent(node: Node): Element | null {
+/**
+ * A web component's closed shadow root. Pages can't reach it, but content
+ * scripts can (chrome.dom), and we need it to know which of the host's
+ * children it renders, and where.
+ */
+function closedShadowRoot(el: Element, cache: VisibilityCache): ShadowRoot | null {
+  if (el.shadowRoot) return null;
+  let root = cache.closedRoots.get(el);
+  if (root === undefined) {
+    const dom = (globalThis as unknown as { chrome?: { dom?: { openOrClosedShadowRoot?: (e: Element) => ShadowRoot | null } } }).chrome?.dom;
+    try {
+      root = dom?.openOrClosedShadowRoot?.(el) ?? null;
+    } catch {
+      root = null;
+    }
+    cache.closedRoots.set(el, root);
+  }
+  return root;
+}
+
+/**
+ * Where a node renders: its slot if slotted into a web component (also a
+ * closed one), else its parent (or shadow host). `undefined`: nowhere, a
+ * child of a closed web component that no slot shows.
+ */
+function renderingParent(node: Node, cache: VisibilityCache): Element | null | undefined {
   const slot = (node as Element | Text).assignedSlot;
   if (slot) return slot;
-  if (node.parentElement) return node.parentElement;
+  const parent = node.parentElement;
+  if (parent) {
+    const closed = closedShadowRoot(parent, cache);
+    if (!closed) return parent;
+    for (const s of closed.querySelectorAll('slot')) if (s.assignedNodes().includes(node as ChildNode)) return s;
+    return undefined;
+  }
   const root = node.getRootNode();
   return root instanceof ShadowRoot ? root.host : null;
 }
@@ -131,7 +169,7 @@ export class TextIndex {
     // Text that isn't rendered (hidden, display:none, visibility:hidden) is
     // treated like script text: counted in raw offsets, but never matched,
     // quoted or used as context (selectors are stored and shown to everyone).
-    const shownCache = new Map<Element, boolean>();
+    const shownCache = newVisibilityCache();
     const add = (node: Text, skippedTag: boolean) => {
       const data = node.data;
       const skipped = skippedTag || (data.trim() !== '' && !nodeShown(node, shownCache));
@@ -659,7 +697,7 @@ export function isVisible(range: Range): boolean {
   }
   if (!boxed) return false;
   for (const node of [range.startContainer, range.endContainer]) {
-    const shown = node instanceof Element ? getComputedStyle(node).visibility === 'visible' && rendered(node) : nodeShown(node);
+    const shown = node instanceof Element ? getComputedStyle(node).visibility === 'visible' && rendered(node, newVisibilityCache()) : nodeShown(node);
     if (!shown) return false;
   }
   return true;
