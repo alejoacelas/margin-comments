@@ -237,6 +237,13 @@ class MarginComments implements Actions {
     const s = this.store.state;
     switch (msg.t) {
       case 'state':
+        if ((s.user?.id ?? null) !== (msg.user?.id ?? null)) {
+          // Another account: nothing typed by the previous one carries over.
+          for (const entry of this.draftTimers.values()) if (entry.timer) clearTimeout(entry.timer);
+          this.draftTimers.clear();
+          this.composerText = '';
+          if (s.user) this.store.setUi({ composer: null, activeThreadId: null });
+        }
         this.store.set({ user: msg.user, config: msg.config, connection: msg.connection, ops: msg.ops, drafts: msg.drafts });
         break;
       case 'threads': {
@@ -536,15 +543,18 @@ class MarginComments implements Actions {
    * acknowledging; until then the draft stays saved, so a failure here loses
    * nothing.
    */
-  private async mutate(op: NewOp, draftKey?: string) {
+  private async mutate(op: NewOp, draftKey?: string, draftText?: string) {
     if (draftKey) this.pauseDraftSave(draftKey);
     try {
-      await this.port.call('mutate', { op, draftKey });
+      await this.port.call('mutate', { op, draftKey, draftText });
     } catch (err) {
       if (draftKey) this.flushDraft(draftKey);
       throw err;
     }
-    if (draftKey) this.draftTimers.delete(draftKey);
+    // Forget the local pending save only if it's the submitted text.
+    const pending = draftKey ? this.draftTimers.get(draftKey) : undefined;
+    if (draftKey && pending && (draftText === undefined || pending.draft.text.trim() === draftText.trim())) this.draftTimers.delete(draftKey);
+    else if (draftKey && pending) this.flushDraft(draftKey);
   }
 
   async createThread(body: string) {
@@ -567,6 +577,7 @@ class MarginComments implements Actions {
         },
       },
       c.draftKey,
+      body,
     );
     this.anchors.seed(c.threadId, c.selectors, c.range);
     this.composerText = '';
@@ -581,11 +592,11 @@ class MarginComments implements Actions {
   }
 
   async reply(thread: ViewThread, commentId: string, body: string, draftKey: string) {
-    await this.mutate({ kind: 'addComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId, body }, draftKey);
+    await this.mutate({ kind: 'addComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId, body }, draftKey, body);
   }
 
   async edit(thread: ViewThread, commentId: string, body: string, draftKey: string) {
-    await this.mutate({ kind: 'editComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId, body }, draftKey);
+    await this.mutate({ kind: 'editComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId, body }, draftKey, body);
   }
 
   async remove(thread: ViewThread, commentId: string) {
@@ -705,7 +716,7 @@ class MarginComments implements Actions {
     const ui = this.store.state.ui;
     const patch: Partial<UiState> = { activeThreadId: id, composer: null, adder: null };
     const a = this.anchors.get(id);
-    if (opts.fromSidebar || a.status === 'orphan') {
+    if (opts.fromSidebar || a.status === 'orphan' || ui.sidebarOpen) {
       patch.sidebarOpen = true;
       const t = this.views.find(v => v.id === id);
       if (t) patch.sidebarFilter = t.resolved ? 'resolved' : 'open';

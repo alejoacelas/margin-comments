@@ -18,6 +18,9 @@ type Client = {
 
 const MAX_SUBSCRIPTIONS = 200;
 const AUTH_TIMEOUT_MS = 10_000;
+/** A socket that falls this far behind is dropped (it reconnects and refetches). */
+const MAX_BUFFERED_BYTES = 2 * 1024 * 1024;
+const MAX_SOCKETS_PER_USER = 30;
 
 /**
  * Fan-out of thread changes to every socket subscribed to the thread's page.
@@ -108,6 +111,12 @@ export class LiveHub {
       clearTimeout(authTimer);
       // Re-authenticating as someone else must not inherit subscriptions.
       if (client.user && client.user.id !== user.id) this.unsubscribeAll(client);
+      const sockets = [...this.clients].filter(c => c !== client && c.user?.id === user.id).length;
+      if (sockets >= MAX_SOCKETS_PER_USER) {
+        this.send(client, { type: 'error', error: 'too_many_connections' });
+        client.socket.close(4429, 'too many connections');
+        return;
+      }
       client.user = user;
       client.token = msg.token;
       client.tokenHash = sha256(msg.token);
@@ -136,6 +145,9 @@ export class LiveHub {
           if (set && set.size === 0) this.subs.delete(key);
         }
       }
+      // Acknowledge, so the client fetches its catch-up snapshot only once
+      // live delivery for these pages is in place.
+      if (msg.type === 'subscribe') this.send(client, { type: 'subscribed', groupId, pageKeys: msg.pageKeys.slice(0, 10).filter(isValidPageKey) });
     }
   }
 
@@ -155,6 +167,11 @@ export class LiveHub {
 
   private send(client: Client, msg: ServerLiveMessage) {
     if (client.socket.readyState !== 1) return;
+    if (client.socket.bufferedAmount > MAX_BUFFERED_BYTES) {
+      // Slow or stalled reader: don't let its queue grow without bound.
+      client.socket.terminate();
+      return;
+    }
     try {
       client.socket.send(JSON.stringify(msg));
     } catch {

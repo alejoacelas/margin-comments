@@ -23,6 +23,8 @@ export type ReceivedEmail = {
   html: string | null;
   headers: Record<string, string>;
   authentication: { spf?: string; dkim?: string; dmarc?: string } | null;
+  /** RFC 5322 Message-ID of the received message, if known. */
+  messageId?: string;
 };
 
 /** Sending failed and retrying the same request will not help. */
@@ -150,6 +152,7 @@ export function parseReceived(j: any, fallbackId: string): ReceivedEmail {
     text: typeof j?.text === 'string' ? j.text : null,
     html: typeof j?.html === 'string' ? j.html : null,
     headers,
+    messageId: typeof j?.message_id === 'string' ? j.message_id : headers['message-id'],
     authentication: auth
       ? {
           spf: typeof auth.spf === 'string' ? auth.spf : undefined,

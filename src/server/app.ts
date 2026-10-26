@@ -351,7 +351,8 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
       .filter(isValidPageKey)
       .slice(0, 4);
     if (keys.length === 0) throw new ApiError(400, 'invalid_request', 'keys required');
-    return { threads: listThreads(db, groupId, keys) };
+    const after = Number((req.query as Record<string, unknown>).after ?? 0);
+    return listThreads(db, groupId, keys, Number.isSafeInteger(after) && after > 0 ? after : 0);
   });
 
   app.get('/api/threads/:id', { preHandler: requireUser }, async req => {
@@ -522,7 +523,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
         requireSenderAuth: config.email.requireSenderAuth,
         getUser: id => getUser(db, id),
         postComment: (userId, threadId, commentId, text) => {
-          postComment(getUser(db, userId)!, threadId, { id: commentId, body: text }, 'email');
+          return postComment(getUser(db, userId)!, threadId, { id: commentId, body: text }, 'email').created;
         },
       },
       email,

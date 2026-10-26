@@ -39,3 +39,29 @@ Also found while writing tests this round (not by Codex): the UI store missed
 updates that arrived between first render and subscription (email links
 sometimes didn't open the thread), and the email queue could tick after
 shutdown closed the database. Both fixed with tests.
+
+## Round 2 — full repository (2026-10-26)
+
+Three focused passes over commit `bfbb450` (same split as round 1).
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Saved range/position selectors trusted for a repeated phrase; content inserted above shifts them to the wrong occurrence | Fixed | Shortcuts only when the quote is unique on the page; otherwise context matching. `anchoring/regressions.spec.ts` "a repeated phrase re-anchors…" |
+| A2 | A page's capture-phase click listener can swallow clicks on our UI | Fixed | UI clicks stopped at the window before page listeners, original activation cancelled, one non-composed copy replayed in the next task. "our buttons work on a page whose capture listeners swallow clicks" |
+| A3 | CSS transforms (attribute-only changes) leave stale hit-test boxes | Fixed | Clicks always re-measure; hover cache lives 250 ms. "clicks still hit highlights after a CSS transform…" |
+| A4 | Fuzzy anchors only upgrade when page text length changes | Fixed | Mutation-driven dirty flag; rate-limited checks stay pending. `anchoring/regressions.spec.ts` "a fuzzy anchor upgrades…" |
+| B1 | DMARC "gray" + SPF pass accepted a forged From | Fixed | Accept DMARC pass or (From-aligned) DKIM pass only; SPF alone rejected. `email.test.ts` "spf-only" case |
+| B2 | Slow WebSocket readers can queue unbounded memory | Fixed | 2 MB buffered limit per socket (terminate), 30 sockets per user. `google-live.test.ts` "drops readers that stop reading" |
+| B3 | Same email delivered again with a new provider id posts twice | Fixed | Comment id derived from account + Message-ID. `email.test.ts` replay case |
+| B4 | Thread listing silently capped at 1,000 | Fixed | Cursor pagination (`after`/`next`); the extension fetches all pages. `api.test.ts` "lists every thread of a busy page…" |
+| C1 | Unsent ops and drafts visible to the next account in the same browser | Fixed | Ops/drafts scoped to the account; local pending drafts cleared on account change. "one account's unsent work never shows up…" |
+| C2 | Submitting one editor deletes another editor's draft (two editors for one thread; other tabs) | Fixed | One editor per thread per page (no floating card while the sidebar shows the thread); drafts deleted only if the stored text is what was submitted. "a thread selected in the sidebar has exactly one editor…" |
+| C3 | Typing while a submit is pending loses the extra text | Fixed | Editor read-only while submitting; local draft kept if it differs from what was sent |
+| C4 | Catch-up fetch can race the subscription | Fixed | Server acknowledges subscriptions; the extension fetches the snapshot after the ack. `google-live.test.ts` ack assertion |
+| C5 | A failed thread fetch is never retried while the socket is online | Fixed | Per-page retry with backoff and generation checks |
+| C6 | Margin cards can extend below the viewport | Fixed | Vertical clamping in both placements. `unit/place-card.test.ts` |
+
+Found while re-running the suite this round (not by Codex): on install, the worker could inject
+a second content-script copy into a tab that loaded during installation (the copy replaced the
+first and closed its sidebar). The worker now skips tabs whose content script is already
+connected; the e2e suite passed 3× in a row afterwards.

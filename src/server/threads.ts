@@ -123,16 +123,30 @@ export function getThreadRow(db: DB, id: string) {
   return threadRow(db, id);
 }
 
-export function listThreads(db: DB, groupId: string, pageKeys: string[]): Thread[] {
-  if (pageKeys.length === 0) return [];
+export const THREAD_PAGE_SIZE = 200;
+
+/**
+ * One page of a page's threads, oldest first. `after` is the cursor returned
+ * by the previous page (`next`); `next` is null on the last page.
+ */
+export function listThreads(
+  db: DB,
+  groupId: string,
+  pageKeys: string[],
+  after = 0,
+  limit = THREAD_PAGE_SIZE,
+): { threads: Thread[]; next: number | null } {
+  if (pageKeys.length === 0) return { threads: [], next: null };
   const ph = pageKeys.map(() => '?').join(',');
   const rows = db
     .prepare(
-      `SELECT * FROM threads WHERE group_id = ? AND deleted_at IS NULL AND (page_key IN (${ph}) OR alt_page_key IN (${ph}))
-       ORDER BY rowid LIMIT 1000`,
+      `SELECT rowid AS _seq, * FROM threads WHERE group_id = ? AND deleted_at IS NULL AND (page_key IN (${ph}) OR alt_page_key IN (${ph}))
+       AND rowid > ? ORDER BY rowid LIMIT ?`,
     )
-    .all(groupId, ...pageKeys, ...pageKeys) as ThreadRow[];
-  return serialize(db, rows);
+    .all(groupId, ...pageKeys, ...pageKeys, after, limit + 1) as Array<ThreadRow & { _seq: number }>;
+  const more = rows.length > limit;
+  const page = more ? rows.slice(0, limit) : rows;
+  return { threads: serialize(db, page), next: more ? page[page.length - 1]._seq : null };
 }
 
 export type CreateThreadInput = {

@@ -109,6 +109,7 @@ export type ClientLiveMessage =
 
 export type ServerLiveMessage =
   | { type: 'ready'; user: PublicUser }
+  | { type: 'subscribed'; groupId: string; pageKeys: string[] }
   | { type: 'thread'; thread: Thread }
   | { type: 'thread-deleted'; id: string; pageKey: string; altPageKey: string | null }
   | { type: 'pong' }

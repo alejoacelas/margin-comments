@@ -32,6 +32,8 @@ export type Draft = {
   anchor?: { pageKeys: string[]; selectors: Selector[]; quote: string };
   /** Page the draft belongs to (reply and edit drafts). */
   pageKeys?: string[];
+  /** Account that wrote it (set by the background). */
+  userId?: string;
 };
 
 export type Connection = 'online' | 'connecting' | 'offline';
@@ -43,7 +45,7 @@ export type RpcMethods = {
   googleSignIn: { params: Record<string, never>; result: { user: Me } };
   signOut: { params: Record<string, never>; result: { ok: true } };
   updateMe: { params: { name?: string; notifyEmail?: boolean }; result: { user: Me } };
-  mutate: { params: { op: NewOp; draftKey?: string }; result: { opId: string } };
+  mutate: { params: { op: NewOp; draftKey?: string; draftText?: string }; result: { opId: string } };
   retryOp: { params: { opId: string }; result: { ok: true } };
   discardOp: { params: { opId: string }; result: { ok: true } };
   saveDraft: { params: { draft: Draft }; result: { ok: true } };

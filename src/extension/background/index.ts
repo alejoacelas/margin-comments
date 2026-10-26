@@ -22,6 +22,7 @@ type PortInfo = {
   liveAt: Map<string, number>;
   /** Threads deleted while this page was open; a fetch can't resurrect them. */
   tombstones: Set<string>;
+  loadFailures: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -72,15 +73,26 @@ function post(info: PortInfo, msg: ToContent) {
   }
 }
 
+/** Unsent work is private to the account that wrote it. */
 function opsFor(info: PortInfo): Op[] {
-  return ops.filter(op => op.pageKeys.some(k => info.keys.includes(k)));
+  if (!session) return [];
+  const me = session.user.id;
+  return ops.filter(op => op.userId === me && op.pageKeys.some(k => info.keys.includes(k)));
 }
 
 function draftsFor(info: PortInfo): Draft[] {
+  if (!session) return [];
+  const me = session.user.id;
   return Object.values(drafts).filter(d => {
+    if (d.userId !== me) return false;
     const keys = d.anchor?.pageKeys ?? d.pageKeys;
     return !keys || keys.some(k => info.keys.includes(k));
   });
+}
+
+/** Drafts are stored per account: "<user>|<key>". */
+function draftSlot(key: string): string | null {
+  return session ? `${session.user.id}|${key}` : null;
 }
 
 function sendState(info: PortInfo) {
@@ -138,7 +150,14 @@ async function loadThreads(info: PortInfo) {
   const token = session.token;
   try {
     const query = info.keys.map(k => `key=${encodeURIComponent(k)}`).join('&');
-    const { threads } = await api<{ threads: Thread[] }>('GET', `/api/threads?${query}`, { token });
+    const threads: Thread[] = [];
+    let after = 0;
+    for (let pageNo = 0; pageNo < 100; pageNo++) {
+      const page = await api<{ threads: Thread[]; next: number | null }>('GET', `/api/threads?${query}&after=${after}`, { token });
+      threads.push(...page.threads);
+      if (page.next === null || page.next === undefined) break;
+      after = page.next;
+    }
     // A newer load (navigation, reconnect, sign-in) superseded this one.
     if (gen !== info.loadGen || session?.token !== token || !ports.has(info)) return;
     // Merge with what arrived live while the request was in flight: highest
@@ -154,13 +173,20 @@ async function loadThreads(info: PortInfo) {
     }
     info.threads = merged;
     info.loaded = true;
+    info.loadFailures = 0;
     post(info, { t: 'threads', threads: [...merged.values()], loaded: true });
     updateBadge(info);
   } catch (err) {
     if (gen !== info.loadGen) return;
     if (err instanceof RequestError && err.status === 401) return handleUnauthorized();
-    // Keep whatever we showed before; tell the page we're offline.
+    // Keep whatever we showed before; tell the page; try again with backoff
+    // (independently of the live socket, which may be fine).
     post(info, { t: 'threads', threads: [...info.threads.values()], loaded: info.loaded, error: (err as Error).message });
+    info.loadFailures++;
+    const delay = Math.min(30_000, 1000 * 2 ** Math.min(info.loadFailures, 5));
+    setTimeout(() => {
+      if (gen === info.loadGen && ports.has(info)) void loadThreads(info);
+    }, delay);
   }
 }
 
@@ -175,6 +201,7 @@ chrome.runtime.onConnect.addListener(port => {
     loadGen: 0,
     liveAt: new Map(),
     tombstones: new Set(),
+    loadFailures: 0,
   };
   ports.add(info);
   port.onMessage.addListener((msg: ToBackground) => {
@@ -256,7 +283,7 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     broadcastState();
     return { user };
   },
-  async mutate({ op, draftKey }) {
+  async mutate({ op, draftKey, draftText }) {
     if (!session) throw new Error('Sign in first');
     const full = {
       ...op,
@@ -267,15 +294,19 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
       status: 'pending',
     } as Op;
     ops.push(full);
-    if (draftKey) delete drafts[draftKey];
+    // Drop the draft only if it's the text that was submitted: another tab may
+    // have saved different text under the same key since.
+    const slot = draftKey ? draftSlot(draftKey) : null;
+    const draftConsumed = !!slot && !!drafts[slot] && (draftText === undefined || drafts[slot].text.trim() === draftText.trim());
+    if (draftConsumed) delete drafts[slot!];
     // The op is on disk before we acknowledge it: closing the tab now loses nothing.
-    await persist(draftKey ? ['outbox', 'drafts'] : ['outbox']);
+    await persist(draftConsumed ? ['outbox', 'drafts'] : ['outbox']);
     broadcastState();
     void flush();
     return { opId: full.opId };
   },
   async retryOp({ opId }) {
-    const op = ops.find(o => o.opId === opId);
+    const op = ops.find(o => o.opId === opId && o.userId === session?.user.id);
     if (op) {
       op.status = 'pending';
       op.error = undefined;
@@ -287,22 +318,27 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     return { ok: true as const };
   },
   async discardOp({ opId }) {
-    ops = ops.filter(o => o.opId !== opId);
+    if (!session) return { ok: true as const };
+    const me = session.user.id;
+    ops = ops.filter(o => !(o.opId === opId && o.userId === me));
     await persist(['outbox']);
     broadcastState();
     return { ok: true as const };
   },
   async saveDraft({ draft }) {
-    if (!draft.text.trim()) delete drafts[draft.key];
-    else drafts[draft.key] = { ...draft, updatedAt: Date.now() };
+    const slot = draftSlot(draft.key);
+    if (!slot) throw new Error('Sign in first');
+    if (!draft.text.trim()) delete drafts[slot];
+    else drafts[slot] = { ...draft, userId: session!.user.id, updatedAt: Date.now() };
     pruneDrafts();
     await persist(['drafts']);
     broadcastState();
     return { ok: true as const };
   },
   async deleteDraft({ key }) {
-    if (drafts[key]) {
-      delete drafts[key];
+    const slot = draftSlot(key);
+    if (slot && drafts[slot]) {
+      delete drafts[slot];
       await persist(['drafts']);
       broadcastState();
     }
@@ -323,9 +359,9 @@ function handleRpc<M extends RpcMethod>(method: M, params: RpcMethods[M]['params
 }
 
 function pruneDrafts() {
-  const entries = Object.values(drafts).sort((a, b) => b.updatedAt - a.updatedAt);
+  const entries = Object.entries(drafts).sort((a, b) => b[1].updatedAt - a[1].updatedAt);
   const cutoff = Date.now() - 60 * 86400_000;
-  drafts = Object.fromEntries(entries.filter((d, i) => i < 300 && d.updatedAt > cutoff).map(d => [d.key, d]));
+  drafts = Object.fromEntries(entries.filter(([, d], i) => i < 300 && d.updatedAt > cutoff && d.userId));
 }
 
 async function refreshConfig() {
@@ -555,15 +591,18 @@ function connectLive() {
       wsReady = true;
       reconnectDelay = 1000;
       setConnection('online');
+      // Subscribe; each page catches up once its subscription is acknowledged.
       syncSubscriptions();
-      // Catch up on anything missed while disconnected.
-      for (const info of ports) void loadThreads(info);
       void flush();
       if (pingTimer) clearInterval(pingTimer);
       // Traffic every 20s keeps the service worker (and the socket) alive.
       pingTimer = setInterval(() => {
         if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }));
       }, 20_000);
+    } else if (msg.type === 'subscribed' && Array.isArray(msg.pageKeys)) {
+      // Live delivery for these pages is in place: fetch a snapshot now, so
+      // nothing committed in between can be missed.
+      for (const info of ports) if (info.keys.some(k => msg.pageKeys.includes(k))) void loadThreads(info);
     } else if (msg.type === 'thread' && msg.thread) {
       deliverThread(msg.thread as Thread);
     } else if (msg.type === 'thread-deleted') {
@@ -687,10 +726,14 @@ chrome.action.onClicked.addListener(tab => void onActionClicked(tab));
 
 chrome.runtime.onInstalled.addListener(async details => {
   if (details.reason !== 'install' && details.reason !== 'update') return;
-  // Bring already-open tabs up to date without a reload.
+  // Bring already-open tabs up to date without a reload. Tabs that loaded
+  // after the install already run the manifest's content scripts (they
+  // connect within moments); injecting there too would start a second copy.
+  await new Promise(r => setTimeout(r, 1000));
+  const connected = new Set([...ports].map(p => p.tabId));
   const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
   for (const tab of tabs) {
-    if (tab.id !== undefined && !tab.discarded) injectInto(tab.id).catch(() => {});
+    if (tab.id !== undefined && !tab.discarded && !connected.has(tab.id)) injectInto(tab.id).catch(() => {});
   }
 });
 

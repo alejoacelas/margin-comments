@@ -81,6 +81,7 @@ function Editor(props: {
         ref={ref}
         rows={props.pill ? 1 : 3}
         value={text}
+        readOnly={busy}
         placeholder={props.placeholder}
         data-testid={props.testId}
         aria-label={props.placeholder}

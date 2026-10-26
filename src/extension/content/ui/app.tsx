@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Me } from '../../../shared/types';
 import type { Draft, Op } from '../../messages';
 import { hueIndexFor, OTHER_HUES } from '../highlights';
@@ -16,7 +16,7 @@ const GAP = 15;
  * there's room (like Curius and Google Docs), else just below it, flipped
  * above when it would leave the viewport.
  */
-function placeCard(box: AnchorBox | null, height: number, sidebarOpen: boolean): { left: number; top: number } | null {
+export function placeCard(box: AnchorBox | null, height: number, sidebarOpen: boolean): { left: number; top: number } | null {
   if (!box) return null;
   const rects = box.rects;
   const vw = window.innerWidth - (sidebarOpen ? SIDEBAR_WIDTH : 0);
@@ -28,13 +28,15 @@ function placeCard(box: AnchorBox | null, height: number, sidebarOpen: boolean):
   let top: number;
   if (vw - right - GAP >= CARD_WIDTH + 8) {
     left = right + GAP;
-    top = first.top - 6;
+    // Level with the highlight, but never past the bottom of the viewport.
+    top = Math.min(first.top - 6, vh - height - 8);
   } else {
     left = Math.min(Math.max(8, last.left), vw - CARD_WIDTH - 8);
     top = last.bottom + 8;
     if (top + height > vh - 8 && first.top - height - 8 > 8) top = first.top - height - 8;
   }
   left = Math.max(8, left);
+  top = Math.max(8, Math.min(top, vh - Math.min(height, vh - 16) - 8));
   return { left, top };
 }
 
@@ -216,8 +218,13 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
   const { thread, state, actions } = props;
   const first = thread.comments[0];
   const replies = thread.comments.length - 1;
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (props.selected) rowRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [props.selected]);
   return (
     <div
+      ref={rowRef}
       class={`row${props.selected ? ' selected' : ''}`}
       data-testid="sidebar-thread"
       data-thread-id={thread.id}
@@ -443,8 +450,9 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
   const threads = viewThreads(state);
   const active = ui.activeThreadId ? threads.find(t => t.id === ui.activeThreadId) : null;
   const openCount = threads.filter(t => !t.resolved).length;
-  // The floating card is for highlights; orphans open inside the sidebar.
-  const showActiveCard = !!active && !ui.composer && !(ui.sidebarOpen && actions.isOrphan(active.id));
+  // The floating card is for highlights; with the sidebar open the thread is
+  // shown (and edited) inline there instead: one editor per thread.
+  const showActiveCard = !!active && !ui.composer && !ui.sidebarOpen;
   void ui.layoutTick; // re-render (re-position) on scroll/resize
 
   return (

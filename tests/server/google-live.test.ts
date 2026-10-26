@@ -165,6 +165,31 @@ describe('live updates', () => {
     expect(await s.closed).toBe(4401);
   });
 
+  it('acknowledges subscriptions, and drops readers that stop reading', async () => {
+    t = await makeApp();
+    const url = await listen(t);
+    const a = await signIn(t, 'alice@example.com');
+    const s = connect(url);
+    await s.opened;
+    s.ws.send(JSON.stringify({ type: 'auth', token: a.token }));
+    await s.waitFor(m => m.type === 'ready');
+    s.ws.send(JSON.stringify({ type: 'subscribe', pageKeys: ['example.com/article'] }));
+    const ack = await s.waitFor(m => m.type === 'subscribed');
+    expect(ack.pageKeys).toEqual(['example.com/article']);
+
+    // Stop reading, then generate ~6 MB of updates (large quote, many edits).
+    (s.ws as any)._socket.pause();
+    const big = 'lorem ipsum dolor sit amet '.repeat(3500);
+    const p = threadPayload({ quote: big, selectors: [{ type: 'TextQuoteSelector', exact: big }] });
+    await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(a.token), payload: p });
+    for (let i = 0; i < 80; i++) {
+      await t.app.inject({ method: 'PATCH', url: `/api/comments/${p.comment.id}`, headers: auth(a.token), payload: { body: `edit ${i}` } });
+    }
+    const hub = (t as any).hub;
+    await new Promise(r => setTimeout(r, 200));
+    expect(hub.size).toBe(0); // the stalled socket was terminated
+  });
+
   it('rejects unauthenticated sockets', async () => {
     t = await makeApp();
     const url = await listen(t);

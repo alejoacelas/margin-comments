@@ -235,6 +235,7 @@ describe('notifications and inbound replies (through the API)', () => {
       ['no auth verdict', { from: 'alice@example.com', authentication: null }],
       ['inconclusive auth', { from: 'alice@example.com', authentication: { spf: 'gray', dkim: 'gray', dmarc: 'gray' } }],
       ['self-asserted header only', { from: 'alice@example.com', authentication: null, headers: { 'authentication-results': 'mx; dmarc=pass' } }],
+      ['spf-only (unaligned envelope)', { from: 'alice@example.com', authentication: { spf: 'pass', dkim: 'gray', dmarc: 'gray' } }],
     ];
     for (const [name, o] of cases) {
       const r = await deliver(receivedEmail({ id: randomUUID(), to: [replyTo], text: `forged ${name}`, ...o }));
@@ -255,6 +256,12 @@ describe('notifications and inbound replies (through the API)', () => {
     expect((await deliver(dupe)).json().status).toBe('posted');
     expect((await deliver(dupe)).json().status).toBe('duplicate');
 
+    // The same message delivered again via SMTP gets a new provider id but
+    // keeps its Message-ID: it must not post twice.
+    const original = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'replayed?', messageId: '<abc@mail.example.com>' });
+    expect((await deliver(original)).json().status).toBe('posted');
+    expect((await deliver({ ...original, id: randomUUID() })).json().status).toBe('duplicate');
+
     // Transient failure fetching the email -> 503 so Resend retries; then it works.
     const later = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'after a hiccup' });
     t.provider.fetchFailures.push(new RetryableEmailError('503'));
@@ -262,7 +269,7 @@ describe('notifications and inbound replies (through the API)', () => {
     expect((await deliver(later)).json().status).toBe('posted');
 
     const final = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
-    expect(final.comments.map((c: { body: string }) => c.body)).toEqual(['First!', 'ping', 'pong', 'gray but signed', 'once', 'after a hiccup']);
+    expect(final.comments.map((c: { body: string }) => c.body)).toEqual(['First!', 'ping', 'pong', 'gray but signed', 'once', 'replayed?', 'after a hiccup']);
     expect(JSON.stringify(final)).not.toContain('forged');
   });
 

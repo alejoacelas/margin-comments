@@ -1,5 +1,5 @@
 // Regression tests for bugs found by review (see REVIEW.md).
-import { createThread, expect, FAKE, highlightTexts, selectBetween, setVersion, test, textCenter, uniquePath, waitForEmail , closeSidebar } from './helpers';
+import { closeSidebar, createThread, expect, FAKE, highlightTexts, selectBetween, selectText, setNetwork, setVersion, test, textCenter, uniquePath, waitForEmail } from './helpers';
 
 test.afterEach(async ({ alice, bob }) => {
   expect([...alice.errors, ...bob.errors], 'host page console errors').toEqual([]);
@@ -166,4 +166,46 @@ test('our buttons work on a page whose capture listeners swallow clicks', async 
   await expect(box).toBeChecked();
   // The page never saw any of those clicks.
   expect(await a.evaluate(() => (window as any).__pageClicks)).toBe(before);
+});
+
+test("one account's unsent work never shows up for the next account on the same browser", async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await setNetwork(true);
+  await selectText(a, 'Footer text for the fixture page');
+  await a.locator('[data-testid=adder]').click();
+  await a.locator('[data-testid=composer-input]').fill("Alice's private unsent comment");
+  await a.locator('[data-testid=composer-input]').press('Enter');
+  await expect(a.locator('[data-testid=thread-card]').getByText('Saving…')).toBeVisible();
+  await a.locator('[data-testid=thread-card] [data-testid=reply-input]').fill("Alice's half-typed reply");
+  await a.waitForTimeout(700);
+  await setNetwork(false);
+  await alice.openSidebar(a);
+  // Sign out and sign in as someone else in the same browser.
+  await a.locator('[data-testid=signout]').click();
+  const other = Object.assign(Object.create(Object.getPrototypeOf(alice)), alice, { email: `mallory-${Date.now()}@example.com` });
+  await closeSidebar(a);
+  await other.signIn(a);
+  await alice.openSidebar(a);
+  await expect(a.locator('[data-testid=sidebar]')).not.toContainText("Alice's private unsent comment");
+  await expect(a.locator('[data-testid=sidebar]')).not.toContainText("Alice's half-typed reply");
+  await expect(a.locator('[data-testid=draft-row]')).toHaveCount(0);
+});
+
+test('a thread selected in the sidebar has exactly one editor on the page', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Open annotation standard', 'One editor please');
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=sidebar-thread]').click();
+  await expect(a.locator('[data-testid=reply-input]')).toHaveCount(1);
+  // Clicking the highlight with the sidebar open selects it there too.
+  await closeSidebar(a);
+  await alice.openSidebar(a);
+  const at = await textCenter(a, 'Open annotation standard');
+  await a.mouse.click(at.x, at.y);
+  await expect(a.locator('[data-testid=sidebar-thread].selected')).toHaveCount(1);
+  await expect(a.locator('[data-testid=reply-input]')).toHaveCount(1);
 });

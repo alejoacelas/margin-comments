@@ -60,8 +60,8 @@ export type InboundDeps = {
   getUser: (id: string) => { id: string; email: string } | null;
   /** Reject replies whose sender authentication is missing or inconclusive. */
   requireSenderAuth: boolean;
-  /** Post a comment as `userId`; throws on failure. */
-  postComment: (userId: string, threadId: string, commentId: string, body: string) => void;
+  /** Post a comment as `userId`; false if it already existed. Throws on failure. */
+  postComment: (userId: string, threadId: string, commentId: string, body: string) => boolean;
 };
 
 /** Find our signed reply address among the recipients (to, cc, envelope). */
@@ -76,16 +76,21 @@ export function findReplyTarget(secret: string, domain: string, email: ReceivedE
 /**
  * Sender authentication as judged by the receiving server (Resend's
  * `authentication` field; the message's own Authentication-Results header is
- * sender-controlled and ignored). DMARC pass is aligned with From by
- * definition; "gray" DMARC (no policy) still needs SPF or DKIM to pass.
+ * sender-controlled and ignored). Accepted:
+ *  - DMARC pass (aligned with From by definition), or
+ *  - DKIM pass, which Resend only reports when the signing domain matches
+ *    the From domain ("gray" otherwise) — this covers domains with p=none
+ *    (e.g. gmail.com), whose DMARC result is reported as "gray".
+ * SPF alone is not enough: it authenticates the envelope sender, which an
+ * attacker can set to their own domain while forging From.
  */
 export function senderVerdict(email: ReceivedEmail): 'pass' | 'fail' | 'unknown' {
   const a = email.authentication;
   if (!a) return 'unknown';
   if (a.dmarc === 'fail') return 'fail';
   if (a.dmarc === 'pass') return 'pass';
+  if (a.dkim === 'pass') return 'pass';
   if (a.spf === 'fail' && a.dkim === 'fail') return 'fail';
-  if (a.dmarc === 'gray' && (a.dkim === 'pass' || a.spf === 'pass')) return 'pass';
   return 'unknown';
 }
 
@@ -131,10 +136,12 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
   if (!body) return { status: 'rejected', reason: 'empty reply' };
   if (body.length > LIMITS.commentBody) body = `${body.slice(0, LIMITS.commentBody - 1)}…`;
 
-  // Deterministic id: a redelivered webhook can never post twice.
-  const commentId = uuidFrom('inbound-email', email.id);
+  // Deterministic id: a redelivered webhook, or the same message delivered
+  // again (same Message-ID from the same account), can never post twice.
+  const messageId = (email.messageId ?? '').trim().toLowerCase();
+  const commentId = messageId ? uuidFrom('inbound-message', `${user.id}:${messageId}`) : uuidFrom('inbound-email', email.id);
   try {
-    deps.postComment(user.id, target.threadId, commentId, body);
+    if (!deps.postComment(user.id, target.threadId, commentId, body)) return { status: 'duplicate' };
   } catch (err) {
     // Permanent API outcomes (thread deleted, no access) are recorded; anything
     // else propagates so the webhook answers 500 and Resend redelivers.

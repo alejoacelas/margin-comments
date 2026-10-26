@@ -122,6 +122,29 @@ describe('threads', () => {
     expect(limited).toBeGreaterThan(0);
   });
 
+  it('lists every thread of a busy page through pagination', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    t.provider.sent = [];
+    const ids = new Set<string>();
+    for (let i = 0; i < 450; i++) {
+      const p = threadPayload();
+      ids.add(p.id);
+      // Direct inserts keep this fast; the API path is covered elsewhere.
+      const { createThread } = await import('../../src/server/threads');
+      createThread(t.db, (await import('../../src/server/users')).getUserByEmail(t.db, 'alice@example.com')!, { ...p, groupId: 'public' } as any);
+    }
+    const seen = new Set<string>();
+    let after = 0;
+    for (let i = 0; i < 10; i++) {
+      const r = (await t.app.inject({ method: 'GET', url: `/api/threads?key=example.com%2Farticle&after=${after}`, headers: auth(token) })).json();
+      for (const th of r.threads) seen.add(th.id);
+      if (r.next === null) break;
+      after = r.next;
+    }
+    expect(seen.size).toBe(450);
+    expect([...ids].every(id => seen.has(id))).toBe(true);
+  });
+
   it("refuses another user's id reuse", async () => {
     const a = await signIn(t, 'alice@example.com');
     const b = await signIn(t, 'bob@example.com');
