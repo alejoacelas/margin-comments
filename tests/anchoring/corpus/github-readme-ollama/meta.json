@@ -1,0 +1,9 @@
+{
+  "slug": "github-readme-ollama",
+  "category": "github-readme",
+  "sourceUrl": "https://github.com/ollama/ollama/blob/8224cce583e6e7253e2fdeee8f07ab4c8da7bce5/README.md",
+  "fetchedAt": "2026-10-26T15:17:32.747Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://github.com/ollama/ollama/blob/3092e89620cd9223e5214b6b42977d8b2f926dc5/README.md",
+  "notes": "github.com repo README, blob view (React app; DOM captured with Playwright after JS ran, then sanitized). original = README.md at commit 8224cce (2026-02-15); edited = README.md at commit 3092e89 (2026-10-13), 8 README commits later: privacy/cloud wording rewritten, community-integration list items added, dead links fixed, model examples changed (Gemma 3 -> Gemma 4). Long nested lists of community integrations, code blocks, tables."
+}
