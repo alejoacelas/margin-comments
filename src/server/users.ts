@@ -63,11 +63,11 @@ export function upsertUser(db: DB, email: string, opts: { name?: string | null; 
           if (!taken) {
             db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, bySub.id);
           } else {
-            // The (verified) new address already has its own account: use
-            // that one, and move the Google identity to it.
-            db.prepare('UPDATE users SET google_sub = NULL WHERE id = ?').run(bySub.id);
-            db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(opts.googleSub, taken.id);
-            return getUser(db, taken.id)!;
+            // The new address already has its own (email sign-in) account.
+            // Google verified the same mailbox, so it's the same person:
+            // merge that account into the Google one, keeping all work.
+            mergeUsers(db, taken.id, bySub.id);
+            db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, bySub.id);
           }
         }
         return getUser(db, bySub.id)!;
@@ -87,6 +87,18 @@ export function upsertUser(db: DB, email: string, opts: { name?: string | null; 
     ).run(id, email, name, opts.googleSub ?? null, nowIso());
     return getUser(db, id)!;
   });
+}
+
+/** Move everything owned by `fromId` to `intoId`, then delete `fromId` (inside a transaction). */
+export function mergeUsers(db: DB, fromId: string, intoId: string) {
+  if (fromId === intoId) return;
+  db.prepare('UPDATE comments SET author_id = ? WHERE author_id = ?').run(intoId, fromId);
+  db.prepare('UPDATE threads SET author_id = ? WHERE author_id = ?').run(intoId, fromId);
+  db.prepare('UPDATE threads SET resolved_by = ? WHERE resolved_by = ?').run(intoId, fromId);
+  db.prepare('INSERT OR IGNORE INTO group_members (group_id, user_id, role, created_at) SELECT group_id, ?, role, created_at FROM group_members WHERE user_id = ?').run(intoId, fromId);
+  db.prepare('DELETE FROM group_members WHERE user_id = ?').run(fromId);
+  db.prepare('UPDATE sessions SET user_id = ? WHERE user_id = ?').run(intoId, fromId);
+  db.prepare('DELETE FROM users WHERE id = ?').run(fromId);
 }
 
 export function updateUser(db: DB, id: string, patch: { name?: string; notifyEmail?: boolean }): UserRow {

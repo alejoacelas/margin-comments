@@ -24,6 +24,8 @@ function makeSelections(seedText: string, count: number) {
     const r = document.createRange();
     r.selectNodeContents(n);
     if (r.getClientRects().length === 0) continue; // hidden
+    // Readers can't select text they can't see.
+    if (n.parentElement && !n.parentElement.checkVisibility({ visibilityProperty: true } as CheckVisibilityOptions)) continue;
     nodes.push(n);
   }
   const out: Array<{ selectors: Selector[]; quote: string; rawStart: number; length: number }> = [];

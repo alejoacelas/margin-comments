@@ -157,7 +157,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
   });
 
   const log = (msg: string, extra?: object) => app.log.info(extra ?? {}, msg);
-  const queue = new EmailQueue(db, provider, config.email.workerIntervalMs, log, msg => notificationStillWanted(db, msg.meta));
+  const queue = new EmailQueue(db, provider, config.email.workerIntervalMs, log, msg => notificationStillWanted(db, msg.meta, msg.to));
   const hub = new LiveHub(db, token => userForToken(db, token, config.sessionDays), liveHeartbeatMs);
   const limiter = new Limiter();
 

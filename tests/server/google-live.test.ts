@@ -101,6 +101,37 @@ describe('Google sign-in', () => {
     expect(second.email).toBe('new@example.com');
   });
 
+  it('a Google email change onto an existing email account merges the two, keeping all work', async () => {
+    const profile = { sub: 'g-merge', email: 'pat@example.com', email_verified: true, name: 'Pat' };
+    await googleApp(profile);
+    const signInGoogle = async () => {
+      const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });
+      const state = new URL(start.headers.location as string).searchParams.get('state')!;
+      const cb = await t!.app.inject({ method: 'GET', url: `/api/auth/google/callback?code=abc&state=${encodeURIComponent(state)}` });
+      return new URLSearchParams(new URL(cb.headers.location as string).hash.slice(1)).get('session')!;
+    };
+    const g = await signInGoogle();
+    const gUser = (await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(g) })).json().user;
+    const p1 = threadPayload();
+    await t!.app.inject({ method: 'POST', url: '/api/threads', headers: auth(g), payload: p1 });
+    const e = await signIn(t!, 'pat.work@example.com');
+    const p2 = threadPayload();
+    await t!.app.inject({ method: 'POST', url: '/api/threads', headers: auth(e.token), payload: p2 });
+
+    profile.email = 'pat.work@example.com';
+    const g2 = await signInGoogle();
+    const me = (await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(g2) })).json().user;
+    expect(me.id).toBe(gUser.id);
+    expect(me.email).toBe('pat.work@example.com');
+    // Both threads now belong to the same account, which can edit both.
+    for (const p of [p1, p2]) {
+      const r = await t!.app.inject({ method: 'PATCH', url: `/api/comments/${p.comment.id}`, headers: auth(g2), payload: { body: 'still mine' } });
+      expect(r.statusCode).toBe(200);
+    }
+    // The old email session now acts as the merged account too.
+    expect((await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(e.token) })).json().user.id).toBe(gUser.id);
+  });
+
   it('refuses unverified Google emails', async () => {
     await googleApp({ sub: 'g-2', email: 'victim@example.com', email_verified: false, name: 'X' });
     const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });

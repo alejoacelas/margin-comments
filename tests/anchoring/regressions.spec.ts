@@ -85,9 +85,29 @@ test('a highlight moves to the visible copy when a responsive layout swaps copie
   });
   const where = () => page.evaluate(() => ((window as any).__m.get('t').range?.startContainer.parentElement as HTMLElement | undefined)?.id);
   expect(await where()).toBe('d');
-  await page.evaluate(() => {
-    document.body.classList.add('narrow');
-    (window as any).__m.schedule();
-  });
+  // A class change alone (no resize, no explicit schedule) must be noticed.
+  await page.evaluate(() => document.body.classList.add('narrow'));
   await expect.poll(where, { timeout: 10_000 }).toBe('m');
+  // Swapping straight back must not be lost to rate limiting.
+  await page.evaluate(() => document.body.classList.remove('narrow'));
+  await expect.poll(where, { timeout: 10_000 }).toBe('d');
+});
+
+test('text hidden with visibility:hidden does not count as visible', async ({ page }) => {
+  await load(
+    page,
+    `<div id="one"><p id="a">A sentence that appears twice on this page for layout reasons.</p></div>
+     <div id="two" style="visibility:hidden"><p id="b">A sentence that appears twice on this page for layout reasons.</p></div>`,
+  );
+  const where = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('a')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    document.getElementById('one')!.style.visibility = 'hidden';
+    document.getElementById('two')!.style.visibility = 'visible';
+    const res = mc.anchorSelectors(document.body, selectors);
+    return (res?.range.startContainer.parentElement as HTMLElement | undefined)?.id;
+  });
+  expect(where).toBe('b');
 });

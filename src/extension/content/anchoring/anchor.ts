@@ -316,12 +316,30 @@ function toRange(index: TextIndex, cand: { start: number; end: number }): Range 
   }
 }
 
-function isVisible(range: Range): boolean {
+/**
+ * Can the reader see this text? Needs layout boxes and, for the elements at
+ * both ends, no `visibility: hidden` / `content-visibility` / hidden ancestors.
+ */
+export function isVisible(range: Range): boolean {
   const rects = range.getClientRects();
+  let boxed = false;
   for (let i = 0; i < rects.length; i++) {
-    if (rects[i].width > 0 && rects[i].height > 0) return true;
+    if (rects[i].width > 0 && rects[i].height > 0) {
+      boxed = true;
+      break;
+    }
   }
-  return false;
+  if (!boxed) return false;
+  for (const node of [range.startContainer, range.endContainer]) {
+    const el = node instanceof Element ? node : node.parentElement;
+    if (!el) continue;
+    if (typeof el.checkVisibility === 'function') {
+      if (!el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: false } as CheckVisibilityOptions)) return false;
+    } else if (getComputedStyle(el).visibility === 'hidden') {
+      return false;
+    }
+  }
+  return true;
 }
 
 /**

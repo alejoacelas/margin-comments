@@ -518,6 +518,8 @@ class MarginComments implements Actions {
   clickAdder() {
     const sel = document.getSelection();
     if (!sel || sel.rangeCount === 0 || !document.body) return;
+    // The URL may have changed (SPA navigation) since the last poll.
+    this.checkUrl();
     const desc = describeRange(document.body, sel.getRangeAt(0).cloneRange());
     if (!desc) {
       this.toast("Can't comment on that selection.");
@@ -540,6 +542,8 @@ class MarginComments implements Actions {
         quote: desc.quote,
         selectors: desc.selectors,
         range: desc.range,
+        pageKeys: this.identity.keys,
+        pageUrl: this.identity.url,
       },
     });
     sel.removeAllRanges();
@@ -555,13 +559,14 @@ class MarginComments implements Actions {
     try {
       await this.port.call('mutate', { op, draftKey, draftText });
     } catch (err) {
-      if (draftKey) this.flushDraft(draftKey);
+      if (draftKey) this.flushDraft(this.slot(draftKey));
       throw err;
     }
     // Forget the local pending save only if it's the submitted text.
-    const pending = draftKey ? this.draftTimers.get(draftKey) : undefined;
-    if (draftKey && pending && (draftText === undefined || pending.draft.text.trim() === draftText.trim())) this.draftTimers.delete(draftKey);
-    else if (draftKey && pending) this.flushDraft(draftKey);
+    const slot = draftKey ? this.slot(draftKey) : null;
+    const pending = slot ? this.draftTimers.get(slot) : undefined;
+    if (slot && pending && (draftText === undefined || pending.draft.text.trim() === draftText.trim())) this.draftTimers.delete(slot);
+    else if (slot && pending) this.flushDraft(slot);
   }
 
   private composerAttempt: { threadId: string; commentId: string; body: string } | null = null;
@@ -576,7 +581,8 @@ class MarginComments implements Actions {
     }
     const c = this.store.state.ui.composer!;
     this.composerAttempt = { threadId: c.threadId, commentId: c.commentId, body };
-    const keys = this.identity.keys;
+    // The page the text was selected on (captured with the selection).
+    const keys = c.pageKeys;
     await this.mutate(
       {
         kind: 'createThread',
@@ -585,7 +591,7 @@ class MarginComments implements Actions {
         payload: {
           id: c.threadId,
           pageKeys: keys,
-          url: this.identity.url,
+          url: c.pageUrl,
           title: document.title.slice(0, LIMITS.title),
           quote: c.quote,
           selectors: c.selectors,
@@ -602,7 +608,7 @@ class MarginComments implements Actions {
 
   cancelComposer() {
     const c = this.store.state.ui.composer;
-    if (c) this.flushDraft(c.draftKey);
+    if (c) this.flushDraft(this.slot(c.draftKey));
     this.composerText = '';
     this.store.setUi({ composer: null });
   }
@@ -658,26 +664,32 @@ class MarginComments implements Actions {
       // Whose text this is, even if the account changes before it's saved.
       userId: this.store.state.user?.id,
     };
-    const existing = this.draftTimers.get(key);
+    const slot = this.slot(key);
+    const existing = this.draftTimers.get(slot);
     if (existing?.timer) clearTimeout(existing.timer);
-    const timer = setTimeout(() => this.flushDraft(key), 400);
-    this.draftTimers.set(key, { timer, draft });
+    const timer = setTimeout(() => this.flushDraft(slot), 400);
+    this.draftTimers.set(slot, { timer, draft });
+  }
+
+  /** Pending drafts are kept per account: "<user>|<key>". */
+  private slot(key: string, userId = this.store.state.user?.id): string {
+    return `${userId ?? ''}|${key}`;
   }
 
   draftText(key: string): string | undefined {
-    return this.draftTimers.get(key)?.draft.text ?? this.store.state.drafts.find(d => d.key === key)?.text;
+    return this.draftTimers.get(this.slot(key))?.draft.text ?? this.store.state.drafts.find(d => d.key === key)?.text;
   }
 
-  /** Persist a draft; it stays queued here until the background confirms. */
-  private flushDraft(key: string) {
-    const entry = this.draftTimers.get(key);
+  /** Persist a pending draft (by slot); it stays queued here until the background confirms. */
+  private flushDraft(slot: string) {
+    const entry = this.draftTimers.get(slot);
     if (!entry) return;
     if (entry.timer) clearTimeout(entry.timer);
     entry.timer = null;
     this.port
       .call('saveDraft', { draft: entry.draft })
       .then(() => {
-        if (this.draftTimers.get(key) === entry) this.draftTimers.delete(key);
+        if (this.draftTimers.get(slot) === entry) this.draftTimers.delete(slot);
       })
       .catch(() => this.retryDraftsSoon());
   }
@@ -696,15 +708,16 @@ class MarginComments implements Actions {
 
   /** Hold a draft's pending save while it's being submitted. */
   private pauseDraftSave(key: string) {
-    const entry = this.draftTimers.get(key);
+    const entry = this.draftTimers.get(this.slot(key));
     if (entry?.timer) clearTimeout(entry.timer);
     if (entry) entry.timer = null;
   }
 
   deleteDraft(key: string) {
-    const entry = this.draftTimers.get(key);
+    const slot = this.slot(key);
+    const entry = this.draftTimers.get(slot);
     if (entry?.timer) clearTimeout(entry.timer);
-    this.draftTimers.delete(key);
+    this.draftTimers.delete(slot);
     void this.port.call('deleteDraft', { key }).catch(() => {});
   }
 
@@ -725,6 +738,8 @@ class MarginComments implements Actions {
         quote: draft.anchor.quote,
         selectors: draft.anchor.selectors as Selector[],
         range: result.range,
+        pageKeys: this.identity.keys,
+        pageUrl: this.identity.url,
       },
     });
     this.scrollToRange(result.range);
@@ -739,7 +754,7 @@ class MarginComments implements Actions {
       const t = this.views.find(v => v.id === id);
       if (t) patch.sidebarFilter = t.resolved ? 'resolved' : 'open';
     }
-    if (ui.composer) this.flushDraft(ui.composer.draftKey);
+    if (ui.composer) this.flushDraft(this.slot(ui.composer.draftKey));
     this.store.setUi(patch);
     if (opts.scroll && a.status === 'anchored') this.scrollToRange(a.range);
   }

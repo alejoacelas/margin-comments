@@ -82,3 +82,19 @@ Three focused passes over commit `8cf798b`.
 | B4 | Queued notifications sent after the recipient unsubscribed or lost access | Fixed | Jobs carry user/thread ids; eligibility rechecked right before sending. `email.test.ts` "re-checked at send time" |
 | C1 | `updateMe` response could be applied to another account's session | Fixed | Applied only if the session (token and user) is unchanged |
 | C3 | Switching accounts dropped drafts still waiting to be saved | Fixed | Drafts carry their author; pending ones are saved under that account before the UI resets |
+
+## Round 4 — full repository (2026-10-26)
+
+Three focused passes over commit `4ff358a`.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | A comment made right after SPA navigation was saved under the previous page | Fixed | Identity refreshed when the comment starts and kept with the composer. e2e "a comment made right after SPA navigation…" |
+| A2 | Class/style toggles that swap responsive copies weren't noticed | Fixed | Observer watches `class`/`style`/`hidden`/`open` attributes and triggers visibility re-checks. `anchoring/regressions.spec.ts` (no explicit `schedule()` any more) |
+| A3 | A quick swap back within the rate limit was dropped | Fixed | Due visibility checks are rescheduled, never dropped. Same test (swap back) |
+| A4 | `visibility:hidden` text counted as visible | Fixed | Shared `isVisible` (boxes + `checkVisibility`). "text hidden with visibility:hidden…"; corpus harness now selects only visible text |
+| B1 | A queued notification could go to an address the account no longer uses | Fixed | Send-time check that the job's address is the account's current one. `email.test.ts` |
+| B2 | Google email change onto an existing email account stranded the original account's work | Fixed | Transactional merge into the Google account (comments, threads, memberships, sessions). `google-live.test.ts` "…merges the two, keeping all work" |
+| B3 | Daily-quota waits used up the retry budget | Fixed | Quota waits don't count as attempts; jobs give up after 3 days instead. `email.test.ts` "daily-quota waits…" |
+| C1 | A previous account's unsaved draft could show in the next account's editor | Fixed | Pending drafts keyed per account; lookups filtered by the current user |
+| C2 | Late mutation responses could sign out or feed data to a different (newer) session | Fixed | Deliveries and 401 handling only for the session that made the request |

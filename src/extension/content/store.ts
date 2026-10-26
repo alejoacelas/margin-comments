@@ -21,6 +21,9 @@ export type ComposerTarget = {
   quote: string;
   selectors: import('../../shared/types').Selector[];
   range: Range;
+  /** Page identity when the text was selected (SPA navigation can't move it). */
+  pageKeys: string[];
+  pageUrl: string;
 };
 
 export type UiState = {

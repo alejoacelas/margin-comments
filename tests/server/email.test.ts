@@ -214,6 +214,36 @@ describe('notifications and inbound replies (through the API)', () => {
     expect(job.last_error).toMatch(/no longer eligible/);
   });
 
+  it("queued notifications aren't sent to an address the account no longer uses", async () => {
+    const { a, b, p } = await setup();
+    t.provider.sent = [];
+    t.provider.failures.push(new RetryableEmailError('503', 1));
+    await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'moved' } });
+    await t.queue.tick();
+    t.db.prepare('UPDATE users SET email = ? WHERE id = ?').run('alice.new@example.com', a.user.id);
+    await new Promise(r => setTimeout(r, 10));
+    await t.queue.tick();
+    expect(t.provider.sent.filter(s => s.msg.to === 'alice@example.com')).toEqual([]);
+  });
+
+  it('daily-quota waits do not use up the retry budget', async () => {
+    const db = openDb(':memory:');
+    const provider = new RecordingProvider();
+    const q = new EmailQueue(db, provider, 60_000);
+    for (let i = 0; i < 15; i++) provider.failures.push(new RetryableEmailError('resend 429 daily_quota_exceeded', 3600_000));
+    q.enqueue('test', { to: 'a@b.com', from: 'f', subject: 'quota', text: 't', html: 'h' }, 'quota-1');
+    for (let i = 0; i < 15; i++) {
+      db.prepare("UPDATE email_jobs SET next_attempt_at = '2000-01-01T00:00:00.000Z'").run();
+      await q.tick();
+    }
+    const row = db.prepare("SELECT status, attempts FROM email_jobs WHERE idempotency_key = 'quota-1'").get() as { status: string; attempts: number };
+    expect(row.status).toBe('pending');
+    db.prepare("UPDATE email_jobs SET next_attempt_at = '2000-01-01T00:00:00.000Z'").run();
+    await q.tick();
+    expect(provider.sent.map(s => s.msg.subject)).toEqual(['quota']);
+    db.close();
+  });
+
   it('a comment and its notifications commit together', async () => {
     const { b, p } = await setup();
     const original = t.queue.enqueue.bind(t.queue);

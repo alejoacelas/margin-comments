@@ -89,9 +89,11 @@ export function queueLoginEmail(queue: EmailQueue, config: Config, to: string, r
 }
 
 /** Is this user still someone we should email about this thread? */
-export function notificationStillWanted(db: DB, meta: { userId: string; threadId: string } | undefined): boolean {
+export function notificationStillWanted(db: DB, meta: { userId: string; threadId: string } | undefined, to?: string): boolean {
   if (!meta) return true;
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(meta.userId) as UserRow | undefined;
+  // The account's address changed since queueing: don't send to the old one.
+  if (user && to !== undefined && user.email !== to.toLowerCase()) return false;
   const thread = db.prepare('SELECT group_id, deleted_at FROM threads WHERE id = ?').get(meta.threadId) as
     | { group_id: string; deleted_at: string | null }
     | undefined;

@@ -3,6 +3,8 @@ import { type DB, nowIso } from '../db';
 import { type EmailProvider, type OutgoingEmail, PermanentEmailError, RetryableEmailError } from './provider';
 
 const MAX_ATTEMPTS = 10;
+/** Quota waits can last a day; give up only after this long. */
+const MAX_AGE_MS = 3 * 86400_000;
 
 type JobRow = {
   id: string;
@@ -11,6 +13,7 @@ type JobRow = {
   message: string;
   idempotency_key: string;
   attempts: number;
+  created_at: string;
 };
 
 /**
@@ -107,8 +110,11 @@ export class EmailQueue {
         .run(id, nowIso(), job.id);
       this.log('email sent', { kind: job.kind, job: job.id });
     } catch (err) {
-      const attempts = job.attempts + 1;
-      const permanent = err instanceof PermanentEmailError || attempts >= MAX_ATTEMPTS;
+      // Quota waits (an hour or more) don't count as failed attempts.
+      const quotaWait = err instanceof RetryableEmailError && (err.retryAfterMs ?? 0) >= 3600_000;
+      const attempts = job.attempts + (quotaWait ? 0 : 1);
+      const tooOld = Date.now() - Date.parse(job.created_at) > MAX_AGE_MS;
+      const permanent = err instanceof PermanentEmailError || attempts >= MAX_ATTEMPTS || tooOld;
       const retryAfter =
         err instanceof RetryableEmailError && err.retryAfterMs
           ? err.retryAfterMs

@@ -107,7 +107,7 @@ function matches(info: PortInfo, thread: { pageKey: string; altPageKey: string |
   return info.keys.includes(thread.pageKey) || (!!thread.altPageKey && info.keys.includes(thread.altPageKey));
 }
 
-function deliverThread(thread: Thread) {
+function deliverThreadToPorts(thread: Thread) {
   for (const info of ports) {
     if (!matches(info, thread)) continue;
     if (info.tombstones.has(thread.id)) continue;
@@ -120,7 +120,7 @@ function deliverThread(thread: Thread) {
   }
 }
 
-function deliverDeleted(id: string, pageKey: string, altPageKey: string | null) {
+function deliverDeletedToPorts(id: string, pageKey: string, altPageKey: string | null) {
   for (const info of ports) {
     if (!matches(info, { pageKey, altPageKey }) && !info.threads.has(id)) continue;
     info.threads.delete(id);
@@ -178,7 +178,10 @@ async function loadThreads(info: PortInfo) {
     updateBadge(info);
   } catch (err) {
     if (gen !== info.loadGen) return;
-    if (err instanceof RequestError && err.status === 401) return handleUnauthorized();
+    if (err instanceof RequestError && err.status === 401) {
+      if (session?.token === token) return handleUnauthorized();
+      return;
+    }
     // Keep whatever we showed before; tell the page; try again with backoff
     // (independently of the live socket, which may be fine).
     post(info, { t: 'threads', threads: [...info.threads.values()], loaded: info.loaded, error: (err as Error).message });
@@ -424,6 +427,14 @@ let flushAgain = false;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function execute(op: Op, token: string): Promise<void> {
+  // Results only reach pages while the session that made the request is
+  // still the current one (the op itself is still acknowledged either way).
+  const deliverThread = (t: Thread) => {
+    if (session?.token === token) deliverThreadToPorts(t);
+  };
+  const deliverDeleted = (id: string, pageKey: string, alt: string | null) => {
+    if (session?.token === token) deliverDeletedToPorts(id, pageKey, alt);
+  };
   try {
     switch (op.kind) {
       case 'createThread': {
@@ -481,8 +492,9 @@ async function flush(): Promise<void> {
       flushAgain = false;
       for (const op of [...ops]) {
         if (!session || op.status !== 'pending' || op.userId !== session.user.id) continue;
+        const token = session.token;
         try {
-          await execute(op, session.token);
+          await execute(op, token);
           ops = ops.filter(o => o.opId !== op.opId);
           await persist(['outbox']);
           broadcastState();
@@ -495,7 +507,8 @@ async function flush(): Promise<void> {
             return;
           }
           if (err instanceof RequestError && err.status === 401) {
-            await handleUnauthorized();
+            // Only if that session is still the current one.
+            if (session?.token === token) await handleUnauthorized();
             return;
           }
           op.status = 'failed';
@@ -624,9 +637,9 @@ function connectLive() {
       // nothing committed in between can be missed.
       for (const info of ports) if (info.keys.some(k => msg.pageKeys.includes(k))) void loadThreads(info);
     } else if (msg.type === 'thread' && msg.thread) {
-      deliverThread(msg.thread as Thread);
+      if (session?.token === token) deliverThreadToPorts(msg.thread as Thread);
     } else if (msg.type === 'thread-deleted') {
-      deliverDeleted(msg.id, msg.pageKey, msg.altPageKey ?? null);
+      if (session?.token === token) deliverDeletedToPorts(msg.id, msg.pageKey, msg.altPageKey ?? null);
     }
   };
   socket.onclose = ev => {
@@ -637,10 +650,10 @@ function connectLive() {
     pingTimer = null;
     setConnection('offline');
     if (ev.code === 4401) {
-      // Verify the session before giving up on it.
-      if (session)
-        api('GET', '/api/me', { token: session.token }).catch(err => {
-          if (err instanceof RequestError && err.status === 401) void handleUnauthorized();
+      // Verify the session before giving up on it (if it's still current then).
+      if (session?.token === token)
+        api('GET', '/api/me', { token }).catch(err => {
+          if (err instanceof RequestError && err.status === 401 && session?.token === token) void handleUnauthorized();
         });
     }
     if (wantLive()) scheduleReconnect();

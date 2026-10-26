@@ -248,3 +248,21 @@ test('two quick replies are two comments', async ({ alice }) => {
   await a.locator('[data-testid=sidebar-thread]').click();
   await expect(a.locator('[data-testid=sidebar-thread] [data-testid=comment-body]')).toHaveText(['Start', 'Reply A', 'Reply B']);
 });
+
+test('a comment made right after SPA navigation is saved for the new page', async ({ alice }) => {
+  const path = uniquePath('spa');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await expect(a.locator('#late')).toBeVisible();
+  const route = `${path}-second`;
+  await a.evaluate(r => (window as any).navigate(r), route);
+  // Select and comment immediately, before the URL poll notices.
+  await createThread(a, 'A different view rendered', 'On route two');
+  // Load the app again and navigate the same way: the thread belongs to route two…
+  await a.goto(`http://localhost:18902${path}`);
+  await expect(a.locator('#late')).toBeVisible();
+  await alice.openSidebar(a);
+  await expect(a.locator('[data-testid=sidebar-thread]')).toHaveCount(0); // …not to the first route
+  await a.evaluate(r => (window as any).navigate(r), route);
+  await expect(a.locator('[data-testid=sidebar-thread]')).toContainText('On route two', { timeout: 10_000 });
+});

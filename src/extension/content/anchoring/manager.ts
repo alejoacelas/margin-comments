@@ -1,5 +1,5 @@
 import type { Selector, TextQuoteSelector } from '../../../shared/types';
-import { anchorSelectors, stripWs, TextIndex } from './anchor';
+import { anchorSelectors, isVisible, stripWs, TextIndex } from './anchor';
 
 export type AnchorState =
   | { status: 'anchored'; range: Range; fuzzy: boolean }
@@ -20,6 +20,7 @@ type Entry = {
   /** A text change arrived while a fuzzy anchor's upgrade check was rate-limited. */
   upgradeDue: boolean;
   lastVisibilityCheck: number;
+  visibilityDue: boolean;
   /** -1 until the first failed attempt. */
   failedAtLength: number;
 };
@@ -49,6 +50,8 @@ export class AnchorManager {
   private destroyed = false;
   /** Page text changed since the last pass (set by the mutation observer). */
   private dirty = true;
+  /** Layout-affecting attributes changed (visibility of copies may have too). */
+  private layoutDirty = false;
   private textChangedAt = Date.now();
 
   constructor(
@@ -61,16 +64,29 @@ export class AnchorManager {
 
   start() {
     this.observer = new MutationObserver(mutations => {
+      let text = false;
+      let layout = false;
       for (const m of mutations) {
-        if (!this.ignore(m.target)) {
-          this.dirty = true;
-          this.textChangedAt = Date.now();
-          this.schedule();
-          return;
-        }
+        if (this.ignore(m.target)) continue;
+        if (m.type === 'attributes') layout = true;
+        else text = true;
+        if (text) break;
       }
+      if (text) {
+        this.dirty = true;
+        this.textChangedAt = Date.now();
+      }
+      // Class/style/hidden changes can show or hide copies of the text.
+      if (layout) this.layoutDirty = true;
+      if (text || layout) this.schedule();
     });
-    this.observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    this.observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden', 'open'],
+    });
   }
 
   destroy() {
@@ -94,6 +110,7 @@ export class AnchorManager {
       lastTry: 0,
       upgradeDue: false,
       lastVisibilityCheck: 0,
+      visibilityDue: false,
       failedAtLength: -1,
     };
   }
@@ -172,6 +189,8 @@ export class AnchorManager {
 
     const textChanged = this.dirty;
     this.dirty = false;
+    const layoutChanged = this.layoutDirty;
+    this.layoutDirty = false;
     const settled = now - this.textChangedAt >= SETTLE_MS;
 
     let index: TextIndex | null = null;
@@ -199,11 +218,19 @@ export class AnchorManager {
         }
         // Responsive layouts: if the anchored copy is hidden (e.g. a desktop
         // column while the mobile one shows), look for a visible equivalent.
-        if (stillValid && !upgrade && now - e.lastVisibilityCheck >= 2000 && !hasRects(e.state.range)) {
+        // Rate-limited, but a skipped check stays due and is rescheduled.
+        if (stillValid && !upgrade && (layoutChanged || e.visibilityDue || now - e.lastVisibilityCheck >= 10_000) && !isVisible(e.state.range)) {
+          const wait = 1000 - (now - e.lastVisibilityCheck);
+          if (wait > 0) {
+            e.visibilityDue = true;
+            this.schedule(wait);
+            continue;
+          }
+          e.visibilityDue = false;
           e.lastVisibilityCheck = now;
           try {
             const alt = anchorSelectors(root, e.selectors, { index: getIndex() });
-            if (alt && hasRects(alt.range)) {
+            if (alt && isVisible(alt.range)) {
               e.state = { status: 'anchored', range: alt.range, fuzzy: alt.quoteScore < 1 };
               e.anchoredText = stripWs(alt.range.toString());
               changed = true;
@@ -261,10 +288,4 @@ export class AnchorManager {
     if (changed) this.onChange();
     this.onLayout();
   }
-}
-
-function hasRects(range: Range): boolean {
-  const rects = range.getClientRects();
-  for (let i = 0; i < rects.length; i++) if (rects[i].width > 0 && rects[i].height > 0) return true;
-  return false;
 }
