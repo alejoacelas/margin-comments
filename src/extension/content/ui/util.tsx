@@ -226,16 +226,17 @@ export function SecureField(props: {
   // a different field rendered in the same place (e.g. sign-in email -> code):
   // reusing the iframe would only change its URL's hash, which doesn't reload it.
   const [generation, setGeneration] = useState(0);
-  const [native, setNative] = useState(framesUnavailable);
-  if (native) return <NativeField {...props} />;
+  const [inWindow, setInWindow] = useState(framesUnavailable);
+  const key = `${generation}:${props.kind}:${props.testId ?? ''}`;
+  if (inWindow) return <WindowField key={key} {...props} />;
   return (
     <SecureFrame
-      key={`${generation}:${props.kind}:${props.testId ?? ''}`}
+      key={key}
       {...props}
       onHijack={() => setGeneration(g => g + 1)}
       onUnavailable={() => {
         framesBroken = true;
-        setNative(true);
+        setInWindow(true);
       }}
     />
   );
@@ -243,126 +244,38 @@ export function SecureField(props: {
 
 type FieldProps = Parameters<typeof SecureField>[0];
 
-/** Set once a frame failed to start on this page: later fields go native at once. */
+/** Set once a frame failed to start on this page: later fields use windows at once. */
 let framesBroken = false;
 
 /**
  * Can our frames run here? A sandboxed page (CSP `sandbox`, e.g. raw file
- * hosts; its origin is "null") passes its sandbox to child frames, so
- * input.html's script never runs. Such pages usually can't run scripts
- * themselves either, so a plain field in our shadow root is safe there.
+ * hosts; its origin is "null") passes its sandbox on to child frames, so
+ * input.html can't reach the extension. Typing then happens in a small
+ * extension window instead: never in a field the page could read (sandboxed
+ * pages may still run scripts, with `allow-scripts`).
  */
 function framesUnavailable(): boolean {
   return framesBroken || window.origin === 'null';
 }
 
-/** The fallback: a plain field in our shadow root with the same behavior. */
-function NativeField(props: FieldProps) {
-  const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
-  useEffect(() => {
-    if (props.kind === 'textarea') autosize(ref.current);
-    if (props.autoFocus && ref.current) {
-      ref.current.focus({ preventScroll: true });
-      const len = ref.current.value.length;
-      try {
-        ref.current.setSelectionRange(len, len);
-      } catch {
-        // email inputs don't support selection ranges
-      }
-    }
-  }, []);
-  useEffect(() => {
-    if (props.kind === 'textarea') autosize(ref.current);
-  }, [props.value]);
-  if (props.kind === 'copy') {
-    return (
-      <button
-        class={`link-btn${props.muted ? ' muted' : ''}`}
-        style={props.small ? { fontSize: '11px', marginLeft: '6px' } : undefined}
-        data-testid={props.testId}
-        onClick={e => void copyInShadow(props.value, e.currentTarget as HTMLElement).then(ok => props.onCopied?.(ok))}
-      >
-        {props.label}
-      </button>
-    );
-  }
-  const onKeyDown = (e: KeyboardEvent) => {
-    const value = (e.currentTarget as HTMLInputElement).value;
-    const composing = e.isComposing || e.keyCode === 229;
-    if (e.key === 'Enter' && !composing && (props.kind !== 'textarea' || !e.shiftKey || e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      props.onSubmit?.(value);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      props.onEscape?.(value);
-    }
-  };
-  const onInput = (e: Event) => {
-    if (props.kind === 'textarea') autosize(ref.current);
-    props.onChange((e.currentTarget as HTMLInputElement).value);
-  };
-  if (props.kind === 'textarea') {
-    return (
-      <textarea
-        ref={ref}
-        rows={props.rows ?? 3}
-        value={props.value}
-        readOnly={props.readOnly}
-        placeholder={props.placeholder}
-        aria-label={props.label}
-        data-testid={props.testId}
-        onInput={onInput}
-        onKeyDown={onKeyDown}
-      />
-    );
-  }
-  return (
-    <input
-      ref={ref}
-      type={props.kind === 'email' ? 'email' : 'text'}
-      class={props.kind === 'code' ? 'code-input' : undefined}
-      inputMode={props.kind === 'code' ? 'numeric' : undefined}
-      autoComplete={props.kind === 'code' ? 'one-time-code' : props.kind === 'email' ? 'email' : undefined}
-      maxLength={props.maxLength}
-      value={props.value}
-      readOnly={props.readOnly}
-      placeholder={props.placeholder}
-      aria-label={props.label}
-      data-testid={props.testId}
-      onInput={onInput}
-      onKeyDown={onKeyDown}
-    />
-  );
-}
-
-async function copyInShadow(text: string, near: HTMLElement): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    near.parentElement?.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
-  }
-}
-
-/** How long a frame may take to start before we fall back to a plain field. */
+/** How long a frame may take to start before we switch to a window. */
 const FRAME_START_MS = 8000;
 
-function SecureFrame(props: FieldProps & { onHijack: () => void; onUnavailable: () => void }) {
+/**
+ * The relay session behind a field, shared by the framed and windowed forms:
+ * registers the field with the worker, routes its events and pushes value
+ * changes made by our UI.
+ */
+function useFieldSession(props: FieldProps, opts: { onReady?: () => void; startTimeout?: () => void } = {}) {
   const sid = useMemo(() => `${uuid()}${uuid()}`.replace(/-/g, ''), []);
-  const frameRef = useRef<HTMLIFrameElement>(null);
   const latest = useRef(props);
   latest.current = props;
-  // Values the frame reported that our props may not have caught up with yet.
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
+  // Values the field reported that our props may not have caught up with yet.
   // A render can lag a keystroke behind; pushing that older value back would
-  // drop what was just typed, so only values we didn't get from the frame are sent.
-  const fromFrame = useRef<string[]>([props.value]);
-  const loads = useRef(0);
+  // drop what was just typed, so only values we didn't get from the field are sent.
+  const fromField = useRef<string[]>([props.value]);
   const startTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [height, setHeight] = useState(
     props.kind === 'textarea' ? (props.rows ?? 3) * 17 + 12 : props.kind === 'code' ? 40 : props.kind === 'copy' ? 16 : 32,
@@ -377,14 +290,14 @@ function SecureFrame(props: FieldProps & { onHijack: () => void; onUnavailable: 
       (type, value) => {
         const cur = latest.current;
         const changed = () => {
-          fromFrame.current.push(value);
-          if (fromFrame.current.length > 200) fromFrame.current.splice(0, 100);
+          fromField.current.push(value);
+          if (fromField.current.length > 200) fromField.current.splice(0, 100);
           cur.onChange(value);
         };
         if (type === 'input') changed();
         else if (type === 'submit') {
           // Carries the field's value; make sure we have it (and its draft) first.
-          if (fromFrame.current[fromFrame.current.length - 1] !== value) changed();
+          if (fromField.current[fromField.current.length - 1] !== value) changed();
           cur.onSubmit?.(value);
           // The field locked itself on Enter; once the submit handler has
           // rendered (busy -> readOnly, or ignored), tell it the real state.
@@ -396,15 +309,12 @@ function SecureFrame(props: FieldProps & { onHijack: () => void; onUnavailable: 
         else if (type === 'ready') {
           clearTimeout(startTimer.current);
           if (cur.readOnly) cur.actions.fieldCommand(sid, { cmd: 'readonly', on: true });
-          if (cur.autoFocus) {
-            frameRef.current?.focus();
-            cur.actions.fieldCommand(sid, { cmd: 'focus' });
-          }
+          optsRef.current.onReady?.();
         }
       },
       () => latest.current.value,
     );
-    startTimer.current = setTimeout(() => latest.current.onUnavailable(), FRAME_START_MS);
+    if (optsRef.current.startTimeout) startTimer.current = setTimeout(() => optsRef.current.startTimeout?.(), FRAME_START_MS);
     return () => {
       clearTimeout(startTimer.current);
       latest.current.actions.closeField(sid);
@@ -413,11 +323,11 @@ function SecureFrame(props: FieldProps & { onHijack: () => void; onUnavailable: 
 
   // Value changes made by our UI (e.g. cleared after sending).
   useEffect(() => {
-    const seen = fromFrame.current.lastIndexOf(props.value);
+    const seen = fromField.current.lastIndexOf(props.value);
     if (seen >= 0) {
-      fromFrame.current.splice(0, seen);
+      fromField.current.splice(0, seen);
     } else {
-      fromFrame.current = [props.value];
+      fromField.current = [props.value];
       props.actions.fieldCommand(sid, { cmd: 'set', value: props.value });
     }
   }, [props.value]);
@@ -425,6 +335,21 @@ function SecureFrame(props: FieldProps & { onHijack: () => void; onUnavailable: 
     props.actions.fieldCommand(sid, { cmd: 'readonly', on: !!props.readOnly });
   }, [props.readOnly]);
 
+  return { sid, height, width };
+}
+
+function SecureFrame(props: FieldProps & { onHijack: () => void; onUnavailable: () => void }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const loads = useRef(0);
+  const { sid, height, width } = useFieldSession(props, {
+    onReady: () => {
+      if (props.autoFocus) {
+        frameRef.current?.focus();
+        props.actions.fieldCommand(sid, { cmd: 'focus' });
+      }
+    },
+    startTimeout: () => props.onUnavailable(),
+  });
   return (
     <iframe
       key={sid}
@@ -442,5 +367,34 @@ function SecureFrame(props: FieldProps & { onHijack: () => void; onUnavailable: 
         if (loads.current > 1) props.onHijack();
       }}
     />
+  );
+}
+
+/**
+ * Where frames can't run: the field opens in a small extension window (same
+ * relay, same events); the page only shows a button.
+ */
+function WindowField(props: FieldProps) {
+  const { sid } = useFieldSession(props);
+  const open = () => props.actions.openFieldWindow(sid);
+  if (props.kind === 'copy') {
+    return (
+      <button
+        class={`link-btn${props.muted ? ' muted' : ''}`}
+        style={props.small ? { fontSize: '11px', marginLeft: '6px' } : undefined}
+        data-testid={props.testId ? `${props.testId}-window` : undefined}
+        onClick={open}
+      >
+        {props.label}…
+      </button>
+    );
+  }
+  return (
+    <div class="window-field">
+      <span>This page is sandboxed, so typing happens in a small window.</span>
+      <button class="link-btn" data-testid={props.testId ? `${props.testId}-window` : undefined} onClick={open}>
+        {props.value.trim() ? 'Continue typing' : props.label}
+      </button>
+    </div>
   );
 }

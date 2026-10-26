@@ -21,7 +21,10 @@ declare const __API_URL__: string;
 declare const __OPEN_SHADOW__: boolean;
 const API_URL = __API_URL__;
 const API_ORIGIN = new URL(API_URL).origin;
-const HOST_TAG = 'margin-comments-root';
+// The UI host is a plain <div>: a custom element name could be defined by the
+// page first, and its constructor could keep attachInternals(), whose
+// shadowRoot exposes even a closed root. (Older versions used a custom element.)
+const HOST_SELECTOR = 'div[data-margin-comments], margin-comments-root';
 
 declare global {
   interface Window {
@@ -138,10 +141,11 @@ class MarginComments implements Actions {
       invalidated: false,
     });
 
-    // UI host: a custom element on <html> (outside <body>, so page text and
-    // text offsets never include it), with an open shadow root.
-    for (const old of document.querySelectorAll(HOST_TAG)) old.remove();
-    this.host = document.createElement(HOST_TAG);
+    // UI host: a <div> on <html> (outside <body>, so page text and text
+    // offsets never include it), with its own shadow root.
+    for (const old of document.querySelectorAll(HOST_SELECTOR)) old.remove();
+    this.host = document.createElement('div');
+    this.host.setAttribute('data-margin-comments', '');
     // Closed in production: page scripts can't reach into our UI (read the
     // account, drafts or comments, or drive the controls with synthetic
     // events). Test builds use an open root so Playwright can drive it.
@@ -767,6 +771,11 @@ class MarginComments implements Actions {
   fieldCommand(sid: string, cmd: InputCommand) {
     if (!this.fields.has(sid)) return;
     void this.port.call('inputCommand', { sid, cmd }).catch(() => {});
+  }
+
+  openFieldWindow(sid: string) {
+    if (!this.fields.has(sid)) return;
+    void this.port.call('inputWindow', { sid }).catch(err => this.toast((err as Error).message));
   }
 
   closeField(sid: string) {

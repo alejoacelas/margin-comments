@@ -62,7 +62,7 @@ test('production: sign in, comment, see it live in a second browser, clean up', 
   try {
     const pa = await a.context.newPage();
     await pa.goto(PAGE);
-    await expect(pa.locator('margin-comments-root')).toHaveCount(1);
+    await expect(pa.locator('[data-margin-comments]')).toHaveCount(1);
     await signIn(a.context, pa, `smoke-a-${stamp}@example.com`);
     const pb = await b.context.newPage();
     await pb.goto(PAGE);
@@ -126,7 +126,7 @@ test('production: comment on real sites without breaking them', async () => {
         if (/chrome-extension:|margin/i.test(String(e.stack))) ours.push(`${url}: ${e.message}`);
       });
       await page.goto(url, { waitUntil: 'domcontentloaded' });
-      await expect(page.locator('margin-comments-root')).toHaveCount(1, { timeout: 15_000 });
+      await expect(page.locator('[data-margin-comments]')).toHaveCount(1, { timeout: 15_000 });
       if (!signedIn) {
         await signIn(a.context, page, `smoke-real-${Date.now()}@example.com`);
         signedIn = true;
@@ -195,8 +195,8 @@ test('production: the shipped dist/ (closed shadow root) comments on Wikipedia w
     if (target) await cdp.send('Target.closeTarget', { targetId: target.targetId });
 
     await page.goto('https://en.wikipedia.org/wiki/Marginalia', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('margin-comments-root')).toHaveCount(1, { timeout: 15_000 });
-    expect(await page.evaluate(() => document.querySelector('margin-comments-root')!.shadowRoot)).toBeNull();
+    await expect(page.locator('[data-margin-comments]')).toHaveCount(1, { timeout: 15_000 });
+    expect(await page.evaluate(() => document.querySelector('[data-margin-comments]')!.shadowRoot)).toBeNull();
     const chip = await page.evaluate(() => {
       const p = [...document.querySelectorAll('#mw-content-text p')].find(x => (x.textContent ?? '').trim().length > 80)!;
       p.scrollIntoView({ block: 'center' });

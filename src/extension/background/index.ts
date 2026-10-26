@@ -231,7 +231,7 @@ async function loadThreads(info: PortInfo) {
 // Secure input frames: relay between a content script and its input.html frames
 // ---------------------------------------------------------------------------
 
-type InputSession = { owner: PortInfo; init: InputInit; frame: chrome.runtime.Port | null; queued: InputCommand[] };
+type InputSession = { owner: PortInfo; init: InputInit; frame: chrome.runtime.Port | null; queued: InputCommand[]; windowId?: number };
 const inputSessions = new Map<string, InputSession>();
 /** Frames that said hello before their content script opened the session. */
 const waitingFrames = new Map<string, chrome.runtime.Port>();
@@ -249,16 +249,20 @@ function attachFrame(sid: string, frame: chrome.runtime.Port) {
   for (const cmd of session.queued.splice(0)) frame.postMessage({ t: 'cmd', cmd });
 }
 
-function closeInputs(owner: PortInfo) {
-  for (const [sid, session] of inputSessions) {
-    if (session.owner !== owner) continue;
-    inputSessions.delete(sid);
-    try {
-      session.frame?.disconnect();
-    } catch {
-      // gone already
-    }
+/** End a field's session; a field in its own window closes that window. */
+function endInput(sid: string, session: InputSession) {
+  inputSessions.delete(sid);
+  try {
+    session.frame?.postMessage({ t: 'closed' });
+    session.frame?.disconnect();
+  } catch {
+    // gone already
   }
+  if (session.windowId !== undefined) void chrome.windows.remove(session.windowId).catch(() => {});
+}
+
+function closeInputs(owner: PortInfo) {
+  for (const [sid, session] of inputSessions) if (session.owner === owner) endInput(sid, session);
 }
 
 chrome.runtime.onConnect.addListener(port => {
@@ -521,14 +525,28 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
   },
   async inputClose({ sid }, info) {
     const session = inputSessions.get(sid);
-    if (session && session.owner === info) {
-      inputSessions.delete(sid);
+    if (session && session.owner === info) endInput(sid, session);
+    return { ok: true as const };
+  },
+  async inputWindow({ sid }, info) {
+    const session = inputSessions.get(sid);
+    if (!session || session.owner !== info) throw new Error('That field is gone. Try again.');
+    if (session.windowId !== undefined) {
       try {
-        session.frame?.disconnect();
+        await chrome.windows.update(session.windowId, { focused: true });
+        return { ok: true as const };
       } catch {
-        // gone already
+        // closed by the user: open a new one
       }
     }
+    const win = await chrome.windows.create({
+      url: chrome.runtime.getURL(`input.html?window=1#${sid}`),
+      type: 'popup',
+      width: session.init.kind === 'textarea' ? 460 : 400,
+      height: session.init.kind === 'textarea' ? 300 : 200,
+      focused: true,
+    });
+    session.windowId = win?.id;
     return { ok: true as const };
   },
   async refresh(_params, info) {

@@ -47,8 +47,10 @@ Choices made while building this without supervision, with the reasoning.
 - **Colors:** yellow for threads you started or replied in, a pastel per thread author (Curius's
   name hash bucketed into 12 hues, skipping yellow) otherwise; darker variants on dark pages.
   Resolved threads are not highlighted (Google Docs behavior).
-- **Shadow DOM, closed mode in production**, attached to `<html>` (outside `<body>`) as a
-  custom element, with `:host { all: initial }`. Closed, because with an open root any page
+- **Shadow DOM, closed mode in production**, attached to `<html>` (outside `<body>`) on a plain
+  `<div data-margin-comments>`, with `:host { all: initial !important }` so page rules for `div`
+  can't touch it. Not a custom element: a page can define that name first and keep
+  `attachInternals()`, whose `shadowRoot` exposes even a closed root. Closed, because with an open root any page
   script could read the account email, drafts and comments in the UI and drive its controls with
   synthetic events (post as the user). With a closed root the event shield can't see targets
   through `composedPath()`, so the content script gives it a resolver (shadow-root
@@ -78,9 +80,10 @@ Choices made while building this without supervision, with the reasoning.
   copies from inside the frame: the text is never selected in the page, and it works on
   plain-HTTP pages, where content scripts have no clipboard API.
 - **Sandboxed pages** (CSP `sandbox`, e.g. raw file hosts) pass the sandbox on to our frames,
-  whose script then never runs. There (origin `"null"`), or if a frame hasn't started after 8 s,
-  fields fall back to plain inputs in the shadow root. Such pages can't run scripts of their own
-  without `allow-scripts`, so nothing on them can read those inputs.
+  which then can't reach the extension. There (origin `"null"`), or if a frame hasn't started
+  after 8 s, each field becomes a button that opens it in a small extension window (same relay,
+  closed when the field goes away). Never a plain input in the page: with `sandbox
+  allow-scripts` the page still runs scripts that could read it.
 - **Plain-HTTP pages are insecure contexts**: content scripts there lack `crypto.randomUUID()`
   and `navigator.clipboard`, so ids come from `getRandomValues` (`src/shared/id.ts`). An e2e
   test runs on `http://insecure.test` (mapped to localhost, which itself counts as secure).

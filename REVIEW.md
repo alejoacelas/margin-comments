@@ -216,3 +216,12 @@ raw.githubusercontent.com) our input frames can't run their script, so nobody co
 type. Fields fall back to plain inputs there. e2e "works on sandboxed pages". The plain-HTTP
 production smoke test now includes info.cern.ch.
 
+## Round 14 — full repository (2026-10-26)
+
+Reviewer B found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| C1 | **A page could define our host's custom element name (`margin-comments-root`) first and keep `attachInternals()`, whose `shadowRoot` exposes the closed root** | Fixed | The host is a plain `<div>` (with `all: initial !important`). The production-build isolation e2e now pre-defines the old name and wraps `attachShadow`, and checks nothing was captured; verified to fail with the custom element |
+| A1 / C2 | **Round 13's sandbox fallback put plain inputs in the page, which `sandbox allow-scripts` pages can read** (an opaque origin doesn't mean no scripts), and the 8 s timeout fallback did the same | Fixed | No in-page inputs at all: where frames can't run, each field is a button that opens it in a small extension window over the same relay. e2e on a `sandbox allow-scripts` page: sign in and comment through windows while a page script logs keys (none seen) |
+

@@ -97,7 +97,7 @@ export class Person {
           return { tabs: tabs.map(t => `${t.id} ${t.active} ${t.url}`), debug: (globalThis as any).__marginTest.debug?.() };
         }, page.url())
         .catch(e => String(e));
-      console.log('[openSidebar diag]', JSON.stringify(diag), 'roots', await page.locator('margin-comments-root').count(), 'workers', this.context.serviceWorkers().length);
+      console.log('[openSidebar diag]', JSON.stringify(diag), 'roots', await page.locator('[data-margin-comments]').count(), 'workers', this.context.serviceWorkers().length);
       throw err;
     }
   }
@@ -145,7 +145,7 @@ export async function closeSidebar(page: Page) {
 }
 
 export async function waitForExtension(page: Page) {
-  await expect(page.locator('margin-comments-root')).toHaveCount(1, { timeout: 10_000 });
+  await expect(page.locator('[data-margin-comments]')).toHaveCount(1, { timeout: 10_000 });
 }
 
 /** Select `text` on the page (it may span several elements). */

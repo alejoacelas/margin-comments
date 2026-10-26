@@ -156,11 +156,9 @@ test('host page layout and text are untouched', async ({ alice }) => {
   expect(after.text).toBe(before.text);
   expect(after.width).toBe(before.width);
   // Our only node is the shadow host on <html>.
-  expect(await a.evaluate(() => [...document.documentElement.children].map(e => e.tagName.toLowerCase()))).toEqual([
-    'head',
-    'body',
-    'margin-comments-root',
-  ]);
+  expect(
+    await a.evaluate(() => [...document.documentElement.children].map(e => e.tagName.toLowerCase() + (e.hasAttribute('data-margin-comments') ? '[data-margin-comments]' : ''))),
+  ).toEqual(['head', 'body', 'div[data-margin-comments]']);
   void FIXTURES;
 });
 
@@ -184,33 +182,37 @@ test('works on plain-HTTP pages (insecure context, no crypto.randomUUID)', async
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Works over plain HTTP', 'And replies']);
 });
 
-test('works on sandboxed pages (CSP sandbox), where our input frames cannot run', async ({ alice }) => {
+test("works on sandboxed pages, where our frames can't run: you type in an extension window the page can't see", async ({ alice }) => {
   const a = await alice.open(uniquePath('article', { sandbox: true }));
   expect(await a.evaluate(() => window.origin)).toBe('null');
+  // The page runs scripts (sandbox allow-scripts) and logs every key it sees.
+  await a.evaluate(() => {
+    const w = window as any;
+    w.__keys = '';
+    for (const t of ['keydown', 'input', 'beforeinput']) window.addEventListener(t, (e: any) => (w.__keys += e.key ?? e.data ?? '?'), true);
+  });
   await alice.openSidebar(a);
-  // Plain fields in our shadow root instead of frames.
   await expect(a.locator('iframe.field-frame')).toHaveCount(0);
+  const typeIn = async (testId: string, text: string) => {
+    const [win] = await Promise.all([alice.context.waitForEvent('page'), a.locator(`[data-testid=${testId}-window]`).click()]);
+    const field = win.locator(`[data-testid=${testId}]`);
+    await field.fill(text);
+    await field.press('Enter');
+    return win;
+  };
   const since = Date.now();
-  await a.locator('[data-testid=signin-email]').fill(alice.email);
-  await a.locator('[data-testid=signin-email]').press('Enter');
+  const w1 = await typeIn('signin-email', alice.email);
+  // The window closes once its field is gone from the page.
+  await expect.poll(() => w1.isClosed()).toBe(true);
   const mail = await waitForEmail(alice.email, m => /sign-in code/.test(m.subject), since);
-  await a.locator('[data-testid=signin-code]').fill(/(\d{6})/.exec(mail.subject)![1]);
-  await a.locator('[data-testid=signin-code]').press('Enter');
+  await typeIn('signin-code', /(\d{6})/.exec(mail.subject)![1]);
   await expect(a.locator('[data-testid=signout]')).toBeVisible();
   await closeSidebar(a);
   await selectText(a, 'Marginalia record a conversation');
   await a.locator('[data-testid=adder]').click();
-  await a.locator('[data-testid=composer-input]').fill('Works when sandboxed');
-  await a.locator('[data-testid=composer-input]').press('Enter');
-  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Works when sandboxed']);
+  const w3 = await typeIn('composer-input', 'Typed in a window');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Typed in a window']);
+  await expect.poll(() => w3.isClosed()).toBe(true);
   await expect.poll(() => highlightTexts(a)).toEqual(['Marginalia record a conversation']);
-  await a.locator('[data-testid=reply-input]').fill('Reply too');
-  await a.locator('[data-testid=reply-input]').press('Enter');
-  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Works when sandboxed', 'Reply too']);
-  // Playwright's own main-world init script is blocked by the sandbox and logs
-  // this (checked via CDP: an anonymous script in the page's default world,
-  // not ours); the extension itself logs nothing.
-  const ours = alice.errors.filter(e => !/Blocked script execution .* the document's frame is sandboxed/.test(e));
-  alice.errors.splice(0, alice.errors.length, ...ours);
+  expect(await a.evaluate(() => (window as any).__keys)).toBe('');
 });
-

@@ -87,6 +87,8 @@ export type RpcMethods = {
   inputOpen: { params: { sid: string; init: InputInit }; result: { ok: true } };
   inputCommand: { params: { sid: string; cmd: InputCommand }; result: { ok: true } };
   inputClose: { params: { sid: string }; result: { ok: true } };
+  /** The field in a small extension window (pages whose sandbox stops our frames). */
+  inputWindow: { params: { sid: string }; result: { ok: true } };
 };
 
 export type RpcMethod = keyof RpcMethods;

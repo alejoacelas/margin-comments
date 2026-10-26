@@ -11,6 +11,9 @@
 import type { InputCommand, InputEventType, InputInit } from '../messages';
 
 const sid = location.hash.slice(1);
+/** Opened as its own window (pages whose sandbox stops our frames), not framed. */
+const standalone = new URLSearchParams(location.search).has('window');
+if (standalone) document.documentElement.classList.add('window');
 let field: HTMLTextAreaElement | HTMLInputElement | null = null;
 let lastHeight = 0;
 /** Attached to the content script (we got `init` on the current port). */
@@ -54,6 +57,15 @@ let copyText = '';
 
 function buildCopy(init: InputInit) {
   copyText = init.value;
+  if (standalone) {
+    // In a window: show the text too (it can be selected and copied by hand).
+    document.title = init.label;
+    const ta = document.createElement('textarea');
+    ta.readOnly = true;
+    ta.value = copyText;
+    ta.className = 'shown';
+    document.body.appendChild(ta);
+  }
   const b = document.createElement('button');
   b.type = 'button';
   b.className = ['copy', init.muted ? 'muted' : '', init.small ? 'small' : ''].filter(Boolean).join(' ');
@@ -110,6 +122,13 @@ function build(init: InputInit) {
   }
   el.placeholder = init.placeholder;
   el.setAttribute('aria-label', init.label);
+  if (standalone) {
+    document.title = init.label;
+    const h = document.createElement('label');
+    h.textContent = init.label;
+    document.body.appendChild(h);
+    if (el instanceof HTMLTextAreaElement) el.rows = 6;
+  }
   if (init.testId) el.dataset.testid = init.testId;
   if (init.maxLength) el.maxLength = init.maxLength;
   el.value = init.value;
@@ -132,6 +151,13 @@ function build(init: InputInit) {
     }
   });
   document.body.appendChild(el);
+  if (standalone) {
+    const hint = document.createElement('p');
+    hint.className = 'hint';
+    hint.textContent = el instanceof HTMLTextAreaElement ? 'Enter to send, Shift+Enter for a new line.' : 'Enter to continue.';
+    document.body.appendChild(hint);
+    el.focus();
+  }
   field = el;
   new ResizeObserver(reportHeight).observe(document.body);
   reportHeight();
@@ -160,7 +186,12 @@ function run(cmd: InputCommand) {
 /** Connect to the worker; reconnect (keeping the field and its text) if it restarts. */
 function connect(): chrome.runtime.Port {
   const p = chrome.runtime.connect({ name: 'mc-input' });
-  p.onMessage.addListener((msg: { t: 'init'; init: InputInit } | { t: 'cmd'; cmd: InputCommand }) => {
+  p.onMessage.addListener((msg: { t: 'init'; init: InputInit } | { t: 'cmd'; cmd: InputCommand } | { t: 'closed' }) => {
+    if (msg.t === 'closed') {
+      // The field is gone from the page (sent, cancelled, page closed).
+      if (standalone) window.close();
+      return;
+    }
     if (msg.t === 'init') {
       attached = true;
       if (!built) build(msg.init);

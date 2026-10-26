@@ -45,4 +45,6 @@ export interface Actions {
   openField(sid: string, init: InputInit, onEvent: (type: InputEventType, value: string) => void, currentValue: () => string): void;
   fieldCommand(sid: string, cmd: InputCommand): void;
   closeField(sid: string): void;
+  /** Open (or bring back) the field in its own extension window, where frames can't run. */
+  openFieldWindow(sid: string): void;
 }

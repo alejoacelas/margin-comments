@@ -411,18 +411,41 @@ test("page scripts can't read or drive our UI in the production build (closed sh
   const mallory = await Person.launch('prod', `prod-${Date.now()}@example.com`, EXT_PATH_CLOSED);
   try {
     await mallory.signInHeadless();
+    // A hostile page gets in first: it claims the custom element name older
+    // versions used (keeping attachInternals(), whose shadowRoot exposes closed
+    // roots) and wraps attachShadow.
+    await mallory.context.addInitScript(() => {
+      const w = window as any;
+      w.__stolen = [];
+      customElements.define(
+        'margin-comments-root',
+        class extends HTMLElement {
+          constructor() {
+            super();
+            w.__stolen.push(this.attachInternals());
+          }
+        },
+      );
+      const attach = Element.prototype.attachShadow;
+      Element.prototype.attachShadow = function (init: ShadowRootInit) {
+        const root = attach.call(this, init);
+        w.__stolen.push({ shadowRoot: root });
+        return root;
+      };
+    });
     const p = await mallory.open(path);
     // The extension works (the thread is highlighted)…
     await expect.poll(() => highlightTexts(p)).toEqual(['Open annotation standard']);
     // …but the page sees an opaque host: no shadow root, no way in.
     const probe = await p.evaluate(() => {
-      const host = document.querySelector('margin-comments-root')!;
+      const host = document.querySelector('[data-margin-comments]')!;
       return { shadow: host.shadowRoot === null, text: host.textContent, inner: host.querySelectorAll('*').length };
     });
     expect(probe).toEqual({ shadow: true, text: '', inner: 0 });
+    expect(await p.evaluate(() => ((window as any).__stolen as { shadowRoot: ShadowRoot | null }[]).filter(x => x.shadowRoot).length)).toBe(0);
     // Synthetic events dispatched at the host do nothing (and don't throw).
     await p.evaluate(() => {
-      const host = document.querySelector('margin-comments-root')!;
+      const host = document.querySelector('[data-margin-comments]')!;
       host.dispatchEvent(new MouseEvent('click', { bubbles: true, composed: true }));
       host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, composed: true }));
     });
@@ -438,7 +461,7 @@ test('the production build (closed shadow root) works with real mouse and keyboa
     const token = await user.signInHeadless();
     const path = uniquePath('article');
     const p = await user.open(path);
-    await expect.poll(() => p.evaluate(() => document.querySelector('margin-comments-root')?.shadowRoot === null)).toBe(true);
+    await expect.poll(() => p.evaluate(() => document.querySelector('[data-margin-comments]')?.shadowRoot === null)).toBe(true);
     // A nosy page logs every key it can see.
     await p.evaluate(() => {
       const w = window as any;
@@ -498,7 +521,7 @@ test("in the production build the page can't find or select your email, name, dr
     await user.signInHeadless();
     const path = uniquePath('article');
     const p = await user.open(path);
-    await expect.poll(() => p.evaluate(() => document.querySelector('margin-comments-root')?.shadowRoot === null)).toBe(true);
+    await expect.poll(() => p.evaluate(() => document.querySelector('[data-margin-comments]')?.shadowRoot === null)).toBe(true);
     // Leave an unsent draft: chip, type, reload.
     await selectText(p, 'Readers have always written in the margins');
     const chip = await p.evaluate(() => {
@@ -511,7 +534,7 @@ test("in the production build the page can't find or select your email, name, dr
     await p.keyboard.type('Unsent private musings');
     await p.waitForTimeout(800);
     await p.reload();
-    await expect.poll(() => p.evaluate(() => !!document.querySelector('margin-comments-root'))).toBe(true);
+    await expect.poll(() => p.evaluate(() => !!document.querySelector('[data-margin-comments]'))).toBe(true);
     // Open the sidebar: account (name, email) and the "Unsent drafts" list.
     await user.clickToolbar(p);
     await expect.poll(() => p.evaluate(() => { getSelection()!.removeAllRanges(); return (window as any).find('Unsent drafts'); })).toBe(true);

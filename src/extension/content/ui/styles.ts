@@ -5,10 +5,13 @@
  * "Comment" chip, yellow for your threads and a pastel per author.
  */
 export const CSS_TEXT = `
+/* The host is a plain <div> in the page, so page rules like div { … } match
+   it: reset everything with !important (a shadow tree's important rules beat
+   the page's), then set what we need, also !important. */
 :host {
-  all: initial;
-  -webkit-user-select: none;
-  user-select: none;
+  all: initial !important;
+  -webkit-user-select: none !important;
+  user-select: none !important;
   --mc-font-ui: "MC Source Sans", "Source Sans 3", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mc-font-comment: verdana, "MC Source Sans", sans-serif;
   --mc-font-quote: "MC Lora", Lora, Georgia, serif;
@@ -42,7 +45,7 @@ export const CSS_TEXT = `
   overflow: visible !important;
   z-index: 2147483647 !important;
   contain: none !important;
-  pointer-events: none;
+  pointer-events: none !important;
 }
 *, *::before, *::after { box-sizing: border-box; }
 .root { font-family: var(--mc-font-ui); font-size: 14px; line-height: 1.4; color: var(--mc-text); -webkit-font-smoothing: antialiased; }
@@ -109,7 +112,9 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
 .c-status { font-size: 11px; color: var(--mc-muted); padding: 0 6px 2px; }
 .c-status.failed { color: var(--mc-danger); }
 .c-status .link-btn { font-size: 11px; margin-left: 6px; }
-.c-status .copy-frame { margin-left: 6px; vertical-align: middle; }
+.c-status .window-field { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: 12px; color: var(--mc-muted); border: 1px dashed var(--mc-border-input); border-radius: 4px; padding: 6px 8px; }
+.window-field .link-btn { color: var(--mc-send-active); }
+.copy-frame { margin-left: 6px; vertical-align: middle; }
 .confirm { font-size: 12px; padding: 4px 6px; background: #fff7f5; border-radius: 4px; margin: 2px 6px; }
 .confirm .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
 

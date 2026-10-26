@@ -253,8 +253,9 @@ createServer(async (req, res) => {
   }
   const headers = { 'content-type': TYPES[extname(full)] ?? 'application/octet-stream', 'cache-control': 'no-store' };
   if (url.pathname.startsWith('/csp/')) headers['content-security-policy'] = STRICT_CSP;
-  // Like raw.githubusercontent.com: a sandboxed document (opaque origin, no scripts).
-  if (url.pathname.startsWith('/sandbox/')) headers['content-security-policy'] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+  // A sandboxed document (opaque origin) that still runs its own scripts, the
+  // harder case (raw.githubusercontent.com uses `sandbox` without scripts).
+  if (url.pathname.startsWith('/sandbox/')) headers['content-security-policy'] = "style-src 'unsafe-inline'; sandbox allow-scripts";
   res.writeHead(200, headers);
   let content = readFileSync(full);
   if (unique && extname(full) === '.html') {

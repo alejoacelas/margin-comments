@@ -23,6 +23,14 @@
       }
       button.copy.muted { color: #808080; font-weight: 400; }
       button.copy.small { font-size: 11px; }
+      /* Opened as a window (sandboxed pages): a small, plain editor. */
+      html.window, html.window body { background: #fff; overflow: auto; }
+      html.window body { padding: 16px; font: 14px/1.4 'MC Source Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; color: rgb(33, 37, 41); }
+      html.window label { display: block; font-weight: 600; margin-bottom: 8px; }
+      html.window textarea, html.window input { font-size: 14px; }
+      html.window textarea.shown { height: 140px; margin-bottom: 10px; }
+      html.window .hint { color: #808080; font-size: 12px; margin: 8px 0 0; }
+      html.window button.copy { font-size: 14px; color: #409FFF; }
       button.copy:focus-visible { outline: 1px solid #9ec9ff; }
     </style>
   </head>
