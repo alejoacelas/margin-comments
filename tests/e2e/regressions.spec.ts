@@ -1,5 +1,5 @@
 // Regression tests for bugs found by review (see REVIEW.md).
-import { createThread, expect, FAKE, highlightTexts, selectBetween, setVersion, test, textCenter, uniquePath, waitForEmail } from './helpers';
+import { createThread, expect, FAKE, highlightTexts, selectBetween, setVersion, test, textCenter, uniquePath, waitForEmail , closeSidebar } from './helpers';
 
 test.afterEach(async ({ alice, bob }) => {
   expect([...alice.errors, ...bob.errors], 'host page console errors').toEqual([]);
@@ -20,7 +20,7 @@ test('checkboxes and forms in our UI activate exactly once', async ({ alice }) =
   await a.locator('[data-testid=signin-code]').fill('000000');
   await a.locator('[data-testid=signin-verify]').click();
   await expect(a.locator('[data-testid=signin] .error')).toBeVisible();
-  await a.locator('[data-testid=sidebar-close]').click();
+  await closeSidebar(a);
 
   await alice.signIn(a);
   await alice.openSidebar(a);
@@ -128,4 +128,42 @@ test('a reply draft stays recoverable when its thread is deleted', async ({ alic
   const draft = a.locator('[data-testid=draft-row]');
   await expect(draft).toContainText('A long reply I typed but did not send');
   await expect(draft).toContainText('was deleted');
+});
+
+test('clicks still hit highlights after a CSS transform moves the text', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'common in medieval manuscripts', 'Transform me');
+  await a.keyboard.press('Escape');
+  await a.evaluate(() => {
+    (document.getElementById('p2') as HTMLElement).style.transform = 'translateY(120px)';
+  });
+  const at = await textCenter(a, 'medieval manuscripts');
+  await a.mouse.click(at.x, at.y);
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText('Transform me');
+});
+
+test('our buttons work on a page whose capture listeners swallow clicks', async ({ alice }) => {
+  const path = uniquePath('keys');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'binds single-letter shortcuts', 'Clickable?');
+  const before = await a.evaluate(() => (window as any).__pageClicks);
+  await a.locator('[data-testid=thread-card] [data-testid=resolve]').click();
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=filter-resolved]').click();
+  await expect(a.locator('[data-testid=sidebar-thread]')).toHaveCount(1);
+  await a.locator('[data-testid=sidebar-thread]').click();
+  await a.locator('[data-testid=sidebar-thread] [data-testid=reopen]').click();
+  await a.locator('[data-testid=filter-open]').click();
+  await expect(a.locator('[data-testid=sidebar-thread]')).toHaveCount(1);
+  const box = a.locator('.sb-foot input[type=checkbox]');
+  await box.click();
+  await expect(box).not.toBeChecked();
+  await box.click();
+  await expect(box).toBeChecked();
+  // The page never saw any of those clicks.
+  expect(await a.evaluate(() => (window as any).__pageClicks)).toBe(before);
 });

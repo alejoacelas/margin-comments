@@ -193,8 +193,15 @@ export function anchorSelectors(
   const exactStripped = stripWs(quote.exact);
   // Same text representation as the quote (scripts/styles excluded).
   const verifies = (r: Range) => !r.collapsed && stripWs(renderedTextFromRange(r)) === exactStripped;
+  const index = options.index && options.index.root === root ? options.index : new TextIndex(root);
 
-  if (rangeSel) {
+  // The saved range/position are only trusted when the quote is unique on
+  // the page: with repeats, content inserted above can shift them onto a
+  // different occurrence, and only context matching picks the right one.
+  const first = index.text.indexOf(exactStripped);
+  const unique = first >= 0 && index.text.indexOf(exactStripped, first + 1) < 0;
+
+  if (rangeSel && unique) {
     try {
       const r = RangeAnchor.fromSelector(root, rangeSel).toRange();
       if (verifies(r)) return { range: r, method: 'range', quoteScore: 1 };
@@ -202,7 +209,7 @@ export function anchorSelectors(
       // fall through
     }
   }
-  if (position) {
+  if (position && unique) {
     try {
       const r = TextPositionAnchor.fromSelector(root, position).toRange();
       if (verifies(r)) return { range: r, method: 'position', quoteScore: 1 };
@@ -211,7 +218,6 @@ export function anchorSelectors(
     }
   }
 
-  const index = options.index && options.index.root === root ? options.index : new TextIndex(root);
   return matchQuoteInIndex(index, quote, position?.start);
 }
 

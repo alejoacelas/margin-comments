@@ -437,7 +437,7 @@ class MarginComments implements Actions {
     const { clientX, clientY } = e;
     requestAnimationFrame(() => {
       this.hoverRaf = false;
-      const id = this.highlighter.hitTest(clientX, clientY);
+      const id = this.highlighter.hitTest(clientX, clientY, false);
       if (id !== this.store.state.ui.hoverThreadId) this.store.setUi({ hoverThreadId: id });
     });
   }

@@ -1,5 +1,6 @@
 // Bundled into an IIFE and injected into corpus pages by corpus.spec.ts.
 import { anchorSelectors, describeRange, stripWs, TextIndex } from '../../src/extension/content/anchoring/anchor';
+import { AnchorManager } from '../../src/extension/content/anchoring/manager';
 import { renderedTextFromRange } from '../../src/extension/content/anchoring/hypothesis/rendered-text';
 import { TextRange } from '../../src/extension/content/anchoring/hypothesis/text-range';
 import type { Selector } from '../../src/shared/types';
@@ -126,4 +127,4 @@ function anchorAll(list: Array<{ selectors: Selector[] }>, opts: { quoteOnly?: b
   return { results, text: index.text };
 }
 
-(window as unknown as { __mc: unknown }).__mc = { makeSelections, selectionsFor, anchorAll, stripWs };
+(window as unknown as { __mc: unknown }).__mc = { makeSelections, selectionsFor, anchorAll, stripWs, describeRange, anchorSelectors, AnchorManager };

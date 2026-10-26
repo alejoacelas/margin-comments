@@ -110,13 +110,18 @@ export class Person {
     await page.locator('[data-testid=signin-code]').fill(code);
     await page.locator('[data-testid=signin-verify]').click();
     await expect(page.locator('[data-testid=signout]')).toBeVisible();
-    await page.locator('[data-testid=sidebar-close]').click();
+    await closeSidebar(page);
   }
 
   async close() {
     await this.context.close();
     await rm(this.dir, { recursive: true, force: true }).catch(() => {});
   }
+}
+
+export async function closeSidebar(page: Page) {
+  await page.locator('[data-testid=sidebar-close]').click();
+  await expect(page.locator('[data-testid=sidebar]')).toHaveCount(0);
 }
 
 export async function waitForExtension(page: Page) {

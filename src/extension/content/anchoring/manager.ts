@@ -17,7 +17,9 @@ type Entry = {
   tries: number;
   nextTry: number;
   lastTry: number;
-  /** Text length of the page when this entry last failed to anchor. */
+  /** A text change arrived while a fuzzy anchor's upgrade check was rate-limited. */
+  upgradeDue: boolean;
+  /** -1 until the first failed attempt. */
   failedAtLength: number;
 };
 
@@ -44,7 +46,8 @@ export class AnchorManager {
   private timerDue = 0;
   private lastRun = 0;
   private destroyed = false;
-  private textLength = -1;
+  /** Page text changed since the last pass (set by the mutation observer). */
+  private dirty = true;
   private textChangedAt = Date.now();
 
   constructor(
@@ -59,6 +62,8 @@ export class AnchorManager {
     this.observer = new MutationObserver(mutations => {
       for (const m of mutations) {
         if (!this.ignore(m.target)) {
+          this.dirty = true;
+          this.textChangedAt = Date.now();
           this.schedule();
           return;
         }
@@ -86,6 +91,7 @@ export class AnchorManager {
       tries: 0,
       nextTry: 0,
       lastTry: 0,
+      upgradeDue: false,
       failedAtLength: -1,
     };
   }
@@ -162,12 +168,8 @@ export class AnchorManager {
     const root = this.getRoot();
     if (!root) return;
 
-    const length = root.textContent?.length ?? 0;
-    const lengthChanged = length !== this.textLength;
-    if (lengthChanged) {
-      this.textLength = length;
-      this.textChangedAt = now;
-    }
+    const textChanged = this.dirty;
+    this.dirty = false;
     const settled = now - this.textChangedAt >= SETTLE_MS;
 
     let index: TextIndex | null = null;
@@ -178,8 +180,21 @@ export class AnchorManager {
     for (const e of this.entries.values()) {
       if (e.state.status === 'anchored') {
         const stillValid = this.valid(e, e.state.range);
-        // A fuzzy anchor is upgraded as soon as the exact text appears.
-        const upgrade = stillValid && e.state.fuzzy && lengthChanged && getIndex().text.includes(e.exactStripped);
+        // A fuzzy anchor is upgraded once the exact text appears (checked at
+        // most every 2 s, since it needs a full text index).
+        let upgrade = false;
+        if (stillValid && e.state.fuzzy && (textChanged || e.upgradeDue)) {
+          const wait = 2000 - (now - e.lastTry);
+          if (wait > 0) {
+            // Too soon: remember to look again rather than dropping the change.
+            e.upgradeDue = true;
+            this.schedule(wait);
+          } else {
+            e.upgradeDue = false;
+            e.lastTry = now;
+            upgrade = getIndex().text.includes(e.exactStripped);
+          }
+        }
         if (stillValid && !upgrade) continue;
         e.state = { status: 'pending' };
         e.tries = 0;
@@ -189,7 +204,7 @@ export class AnchorManager {
       if (e.state.status === 'orphan') {
         // Retry when the backoff elapsed, or sooner if the page text changed
         // (but not more often than every few seconds on busy pages).
-        const grew = length !== e.failedAtLength && now - e.lastTry >= Math.min(5000, 500 * e.tries);
+        const grew = (textChanged || e.failedAtLength < 0) && now - e.lastTry >= Math.min(5000, 500 * e.tries);
         if (now < e.nextTry && !grew) continue;
       }
       e.lastTry = now;
@@ -215,7 +230,7 @@ export class AnchorManager {
         e.state = { status: 'orphan' };
         e.tries++;
         e.nextTry = now + Math.min(30_000, 1000 * 2 ** Math.min(e.tries, 5));
-        e.failedAtLength = length;
+        e.failedAtLength = 0;
         if (!wasOrphan) changed = true;
       }
     }

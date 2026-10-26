@@ -10,4 +10,7 @@ window.__pageKeys = 0; window.__pageMouse = 0;
 window.addEventListener('keydown', e => { window.__pageKeys++; if (e.key === 'j') document.body.dataset.jumped = 'yes'; }, true);
 document.addEventListener('keydown', e => { window.__pageKeys++; });
 document.addEventListener('mousedown', e => { window.__pageMouse++; if (!e.target.closest('p, h1')) e.preventDefault(); }, true);
+// Hostile: swallow every click outside the article text in the capture phase.
+window.__pageClicks = 0;
+document.addEventListener('click', e => { window.__pageClicks++; if (!e.target.closest('p, h1')) { e.stopPropagation(); e.preventDefault(); } }, true);
 </script></body></html>

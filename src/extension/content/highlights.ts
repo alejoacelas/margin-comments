@@ -45,7 +45,10 @@ export type HighlightItem = {
   active: boolean;
 };
 
-type Cached = { item: HighlightItem; rects: DOMRect[] | null; length: number };
+type Cached = { item: HighlightItem; rects: DOMRect[] | null; rectsAt: number; length: number };
+
+/** Hover hit-testing reuses geometry this long (clicks always measure fresh). */
+const HOVER_CACHE_MS = 250;
 
 export class Highlighter {
   private highlights = new Map<string, Highlight>();
@@ -75,7 +78,7 @@ export class Highlighter {
   }
 
   render(items: HighlightItem[], draft: Range | null) {
-    this.items = items.map(item => ({ item, rects: null, length: -1 }));
+    this.items = items.map(item => ({ item, rects: null, rectsAt: 0, length: -1 }));
     if (!this.supported) return;
     for (const h of this.highlights.values()) h.clear();
     for (const { threadId: _t, range, kind, active } of items) {
@@ -89,11 +92,19 @@ export class Highlighter {
     for (const c of this.items) c.rects = null;
   }
 
-  /** The most specific highlighted thread under a viewport point. */
-  hitTest(x: number, y: number): string | null {
+  /**
+   * The most specific highlighted thread under a viewport point. Layout can
+   * change without any DOM mutation (CSS transforms, animations), so clicks
+   * always re-measure; hover reuses very recent geometry.
+   */
+  hitTest(x: number, y: number, fresh = true): string | null {
     let best: Cached | null = null;
+    const now = performance.now();
     for (const c of this.items) {
-      if (!c.rects) c.rects = Array.from(c.item.range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+      if (fresh || !c.rects || now - c.rectsAt > HOVER_CACHE_MS) {
+        c.rects = Array.from(c.item.range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
+        c.rectsAt = now;
+      }
       const hit = c.rects.some(r => x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1);
       if (!hit) continue;
       if (c.length < 0) c.length = c.item.range.toString().length;
