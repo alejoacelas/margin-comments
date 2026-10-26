@@ -96,3 +96,72 @@ test('production: sign in, comment, see it live in a second browser, clean up', 
     await rm(b.dir, { recursive: true, force: true });
   }
 });
+
+// Real, heavy sites: the extension must work and must not log errors there.
+const REAL_SITES = [
+  'https://en.wikipedia.org/wiki/Marginalia',
+  'https://github.com/hypothesis/client',
+  'https://news.ycombinator.com/news',
+  'https://developer.mozilla.org/en-US/docs/Web/API/Range',
+];
+
+test('production: comment on real sites without breaking them', async () => {
+  test.skip(!process.env.ADMIN_TOKEN, 'ADMIN_TOKEN not set');
+  test.setTimeout(240_000);
+  const a = await launch();
+  try {
+    let signedIn = false;
+    for (const url of REAL_SITES) {
+      const page = await a.context.newPage();
+      const ours: string[] = [];
+      page.on('console', m => {
+        const where = m.location().url ?? '';
+        if (m.type() === 'error' && (where.startsWith('chrome-extension://') || /margin/i.test(m.text()))) ours.push(`${url}: ${m.text()}`);
+      });
+      page.on('pageerror', e => {
+        if (/chrome-extension:|margin/i.test(String(e.stack))) ours.push(`${url}: ${e.message}`);
+      });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      await expect(page.locator('margin-comments-root')).toHaveCount(1, { timeout: 15_000 });
+      if (!signedIn) {
+        await signIn(a.context, page, `smoke-real-${Date.now()}@example.com`);
+        signedIn = true;
+      }
+      // Select the first sizeable visible paragraph-ish text.
+      const ok = await page.evaluate(() => {
+        const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) {
+          if (n.data.trim().length < 60 || n.parentElement?.closest('script,style,nav,header,footer,[aria-hidden=true]')) continue;
+          const r = document.createRange();
+          r.setStart(n, n.data.search(/\S/));
+          r.setEnd(n, Math.min(n.data.length, n.data.search(/\S/) + 40));
+          const rect = r.getBoundingClientRect();
+          if (rect.width === 0 || rect.top < 0) continue;
+          n.parentElement!.scrollIntoView({ block: 'center' });
+          document.getSelection()!.removeAllRanges();
+          document.getSelection()!.addRange(r);
+          document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          return true;
+        }
+        return false;
+      });
+      expect(ok, `selectable text on ${url}`).toBe(true);
+      await page.locator('[data-testid=adder]').click();
+      await page.locator('[data-testid=composer-input]').fill(`Smoke on ${url}`);
+      await page.locator('[data-testid=composer-input]').press('Enter');
+      await expect(page.locator('[data-testid=thread-card]').getByText('Saving…')).toHaveCount(0, { timeout: 15_000 });
+      const painted = await page.evaluate(() => [...(CSS as any).highlights.entries()].some(([n, h]: any) => n.startsWith('mc-') && h.size));
+      expect(painted, `highlight on ${url}`).toBe(true);
+      const head = page.locator('[data-testid=thread-card] [data-testid=comment]').first();
+      await head.hover();
+      await head.locator('[data-testid=delete]').click();
+      await head.locator('[data-testid=confirm-delete]').click();
+      await expect(page.locator('[data-testid=thread-card]')).toHaveCount(0);
+      expect(ours, `extension errors on ${url}`).toEqual([]);
+      await page.close();
+    }
+  } finally {
+    await a.context.close();
+    await rm(a.dir, { recursive: true, force: true });
+  }
+});
