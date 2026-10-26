@@ -1,0 +1,9 @@
+{
+  "slug": "arxiv-attention",
+  "category": "arxiv",
+  "sourceUrl": "https://arxiv.org/abs/1706.03762v1",
+  "fetchedAt": "2026-10-26T16:20:59.547Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://arxiv.org/abs/1706.03762v7",
+  "notes": "arXiv abstract page, \"Attention Is All You Need\", v1 vs v7 (submission history, comments and metadata differ; abstract nearly identical)."
+}

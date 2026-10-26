@@ -1,0 +1,76 @@
+{
+  "slug": "substack-acx",
+  "category": "substack",
+  "sourceUrl": "https://www.astralcodexten.com/p/heuristics-that-almost-always-work",
+  "fetchedAt": "2026-10-26T16:20:24.136Z",
+  "editKind": "synthetic",
+  "notes": "Substack post (Astral Codex Ten, custom domain). Synthetic edits (see make-synthetic-edits.mjs).",
+  "edits": [
+    {
+      "type": "insert",
+      "after": "Editor's note: this piece was updated after publication with corrections and a few new passages."
+    },
+    {
+      "type": "delete",
+      "before": "It cannot be denied that the employees he hires are very good. But when he dies, the coroner discovers that his head has a rock saying “HIRE PEOPLE FROM GOOD COLLEGES WITH LOTS OF EXPERIENCE” where his brain should be."
+    },
+    {
+      "type": "replace-word",
+      "from": "develops",
+      "to": "arguably",
+      "before": "At some point, he develops a useful heuristic: it he hears a noise",
+      "after": "At some point, he arguably a useful heuristic: it he hears a noise"
+    },
+    {
+      "type": "replace-word",
+      "from": "dictatorship",
+      "to": "notably",
+      "before": "We’re collapsing into dictatorship! ",
+      "after": "We’re collapsing into notably! "
+    },
+    {
+      "type": "replace-word",
+      "from": "cultists",
+      "to": "roughly",
+      "before": " time might be the exception”. The rock cultists secretly checked their rock and said “N",
+      "after": " time might be the exception”. The rock roughly secretly checked their rock and said “N"
+    },
+    {
+      "type": "replace-word",
+      "from": "improve",
+      "to": "perhaps",
+      "before": "rin and call me in a week if it doesn’t improve”. It always improves; no one ever calls",
+      "after": "rin and call me in a week if it doesn’t perhaps”. It always improves; no one ever calls"
+    },
+    {
+      "type": "whitespace",
+      "before": "He comments on the latest breathless press releases from tech companies. This will change everything! say the press releases. “No it won’t”, he comments. This is the greatest invention ever to exist! say the press releases. “It’s a scam,” he says."
+    },
+    {
+      "type": "replace-word",
+      "from": ",",
+      "to": ";",
+      "before": "1/1000 chance of erupting any given year, uncorrelated with whether it erupted t",
+      "after": "1/1000 chance of erupting any given year; uncorrelated with whether it erupted t"
+    },
+    {
+      "type": "wrap",
+      "tag": "em",
+      "text": "pate. She does"
+    },
+    {
+      "type": "wrap",
+      "tag": "a",
+      "text": "e who went"
+    },
+    {
+      "type": "wrap",
+      "tag": "em",
+      "text": "sits in his"
+    },
+    {
+      "type": "move",
+      "text": "Maybe this is because the experts are stupid and lazy. Or maybe it’s social pressure: failure because you didn’t follow a well-known heuristic that even a rock can get right is more humiliating than failure because you didn’t predict a subtle phenomenon that nobody else predicted either. Or maybe it’s because false positives are more common (albeit less important) than false negatives, and so over any “reasonable” timescale the people who never give false positives look more accurate and get selected for."
+    }
+  ]
+}

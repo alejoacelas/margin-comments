@@ -1,0 +1,9 @@
+{
+  "slug": "hn-chatgpt-thread",
+  "category": "hacker-news",
+  "sourceUrl": "https://web.archive.org/web/20221201010104/https://news.ycombinator.com/item?id=33804874",
+  "fetchedAt": "2026-10-26T15:18:06.725Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://news.ycombinator.com/item?id=33804874",
+  "notes": "Hacker News comment thread \"ChatGPT: Optimizing language models for dialogue\". original = Wayback capture from 2022-12-01 (thread a few hours old); edited = live thread fetched 2026-10-26 (hundreds of comments added, reordered by score, some edited/flagged). Table-based layout."
+}

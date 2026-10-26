@@ -1,0 +1,9 @@
+{
+  "slug": "wikipedia-ja-annotation",
+  "category": "cjk-non-english",
+  "sourceUrl": "https://ja.wikipedia.org/w/index.php?title=%E6%B3%A8%E9%87%88&oldid=84315065",
+  "fetchedAt": "2026-10-26T16:21:13.154Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://ja.wikipedia.org/wiki/%E6%B3%A8%E9%87%88",
+  "notes": "Japanese Wikipedia article 注釈 (annotation): CJK text without spaces between words. Older revision vs current."
+}

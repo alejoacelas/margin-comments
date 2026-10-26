@@ -1,0 +1,9 @@
+{
+  "slug": "github-awesome-nested-lists",
+  "category": "nested-lists",
+  "sourceUrl": "https://github.com/sindresorhus/awesome/blob/670f82b1a9b986d47359c514b0422e12dba82670/readme.md",
+  "fetchedAt": "2026-10-26T16:21:32.560Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://github.com/sindresorhus/awesome/blob/bc98e517ddca672f55f9857d714fc3ea3c3540b2/readme.md",
+  "notes": "sindresorhus/awesome README (deeply nested lists of links), rendered GitHub blob view at two commits 30 README changes apart (items added/removed/renamed). <style>/<svg> dropped."
+}

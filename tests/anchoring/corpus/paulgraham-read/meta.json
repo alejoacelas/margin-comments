@@ -1,0 +1,55 @@
+{
+  "slug": "paulgraham-read",
+  "category": "blog-essay",
+  "sourceUrl": "https://paulgraham.com/read.html",
+  "fetchedAt": "2026-10-26T16:21:02.493Z",
+  "editKind": "synthetic",
+  "notes": "Paul Graham essay: old-school table layout, <font> tags and <br><br> paragraph breaks (no <p>). Synthetic edits.",
+  "edits": [
+    {
+      "type": "insert",
+      "after": "Editor's note: this piece was updated after publication with corrections and a few new passages."
+    },
+    {
+      "type": "delete",
+      "before": "There are of course kinds of thinking that can be done without\nwriting. If you don't need to go too deeply into a problem, you can\nsolve it without writing. If you're thinking about how two pieces\nof machinery should fit together, writing about it probably won't\nhelp much. And when a problem can be described formally, you can\nsometimes solve it in your head. But if you need to solve a\ncomplicated, ill-defined problem, it will almost always help to\nwrite about it. Which in turn means that someone who's not good at\nwriting will almost always be at a disadvantage in solving such\nproblems."
+    },
+    {
+      "type": "replace-word",
+      "from": "science",
+      "to": "largely",
+      "before": "In the science fiction books I read as a kid, reading ",
+      "after": "In the largely fiction books I read as a kid, reading "
+    },
+    {
+      "type": "replace-word",
+      "from": "senses",
+      "to": "notably",
+      "before": "ll. And I mean that last \"well\" in both senses.\nYou have to be good at reading, and re",
+      "after": "ll. And I mean that last \"well\" in both notably.\nYou have to be good at reading, and re"
+    },
+    {
+      "type": "replace-word",
+      "from": "examples",
+      "to": "notably",
+      "before": "]\nAudiobooks can give you examples of good writing, but having\nthem read t",
+      "after": "]\nAudiobooks can give you notably of good writing, but having\nthem read t"
+    },
+    {
+      "type": "replace-word",
+      "from": "develop",
+      "to": "clearly",
+      "before": "deas with other people is a good way to develop them. But\neven after doing this, you'll",
+      "after": "deas with other people is a good way to clearly them. But\neven after doing this, you'll"
+    },
+    {
+      "type": "whitespace",
+      "before": "That sort of thing is unlikely to happen anytime soon. Not just because it would be hard to build a replacement for reading, but because even if one existed, it would be insufficient. Reading about x doesn't just teach you about x; it also teaches you how to write."
+    },
+    {
+      "type": "wrap",
+      "tag": "em",
+      "text": "of\nreading. You"
+    }
+  ]
+}

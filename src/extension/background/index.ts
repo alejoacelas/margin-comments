@@ -648,30 +648,42 @@ async function injectInto(tabId: number) {
   await chrome.scripting.executeScript({ target: { tabId }, files: [CONTENT_FILES.early, CONTENT_FILES.main] });
 }
 
+/** The content script's connection for a tab, waiting briefly for it to show up. */
+async function portForTab(tabId: number, waitMs: number): Promise<PortInfo | undefined> {
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    const p = [...ports].find(x => x.tabId === tabId);
+    if (p || Date.now() >= deadline) return p;
+    await new Promise(r => setTimeout(r, 100));
+  }
+}
+
 async function onActionClicked(tab: { id?: number }) {
   if (tab.id === undefined) return;
-  const target = [...ports].find(p => p.tabId === tab.id);
-  if (target) {
-    post(target, { t: 'toggle-sidebar' });
-    return;
+  await ready;
+  // The page's script may still be connecting (page just loaded, or the
+  // worker just woke up): give it a moment before assuming it's missing.
+  let target = await portForTab(tab.id, 1500);
+  if (!target) {
+    // Page loaded before the extension was installed: inject, then open.
+    try {
+      await injectInto(tab.id);
+    } catch {
+      return; // chrome:// pages, the Web Store, etc.
+    }
+    target = await portForTab(tab.id, 3000);
   }
-  // Page loaded before the extension was installed: inject, then open.
-  try {
-    await injectInto(tab.id);
-    setTimeout(() => {
-      const p = [...ports].find(x => x.tabId === tab.id);
-      if (p) post(p, { t: 'toggle-sidebar' });
-    }, 500);
-  } catch {
-    // chrome:// pages, the Web Store, etc.
-  }
+  if (target) post(target, { t: 'toggle-sidebar' });
 }
 
 chrome.action.onClicked.addListener(tab => void onActionClicked(tab));
 
 // Lets end-to-end tests "click" the toolbar button (Playwright can't reach
 // browser UI). Only callable from the extension's own worker context.
-(globalThis as unknown as { __marginTest: unknown }).__marginTest = { onActionClicked };
+(globalThis as unknown as { __marginTest: unknown }).__marginTest = {
+  onActionClicked,
+  debug: () => ({ ports: [...ports].map(p => ({ tab: p.tabId, keys: p.keys })), connection, signedIn: !!session }),
+};
 
 chrome.runtime.onInstalled.addListener(async details => {
   if (details.reason !== 'install' && details.reason !== 'update') return;

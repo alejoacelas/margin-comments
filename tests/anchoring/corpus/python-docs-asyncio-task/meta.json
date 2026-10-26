@@ -1,0 +1,9 @@
+{
+  "slug": "python-docs-asyncio-task",
+  "category": "docs",
+  "sourceUrl": "https://docs.python.org/3.12/library/asyncio-task.html",
+  "fetchedAt": "2026-10-26T15:21:32.908Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://docs.python.org/3.14/library/asyncio-task.html",
+  "notes": "Python documentation (Sphinx), asyncio \"Coroutines and Tasks\". original = 3.12 docs, edited = 3.14 docs: added sections (eager tasks, TaskGroup changes), reworded paragraphs, new version notes. Code blocks, definition lists, tables."
+}

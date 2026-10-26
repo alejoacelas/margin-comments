@@ -1,0 +1,9 @@
+{
+  "slug": "w3c-annotation-model",
+  "category": "spec-long",
+  "sourceUrl": "https://web.archive.org/web/2018/https://www.w3.org/TR/2016/CR-annotation-model-20160705/",
+  "fetchedAt": "2026-10-26T16:22:32.522Z",
+  "editKind": "real-revision",
+  "editedSourceUrl": "https://web.archive.org/web/2018/https://www.w3.org/TR/2017/REC-annotation-model-20170223/",
+  "notes": "W3C Web Annotation Data Model: Candidate Recommendation (2016-07-05) vs Recommendation (2017-02-23). Very long spec with JSON code examples, tables and nested lists; edits are status-section rewrites, example changes, small wording fixes."
+}

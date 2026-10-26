@@ -1,0 +1,76 @@
+{
+  "slug": "lesswrong-cheerful-price",
+  "category": "lesswrong-heavy-js",
+  "sourceUrl": "https://www.lesswrong.com/posts/MzKKi7niyEqkBPnyu/your-cheerful-price",
+  "fetchedAt": "2026-10-26T16:20:51.065Z",
+  "editKind": "synthetic",
+  "notes": "LessWrong post (React/Apollo SPA): DOM captured with Playwright after JS ran and the page was scrolled; <style>/<svg> dropped to fit the size budget. Synthetic edits.",
+  "edits": [
+    {
+      "type": "insert",
+      "after": "Editor's note: this piece was updated after publication with corrections and a few new passages."
+    },
+    {
+      "type": "delete",
+      "before": "I don’t charge friends for favours, nor would I accept payment if offered. I’m not all that uncomfortable with the idea of “social capital” as a whole—I grew up partially with Portuguese culture where people will, for example, fight to pay the bill at a restaurant, because it turns out to be pretty good to be known as the guy who’s done favours for everybody in the village—but generally speaking, if I’m not willing to do a favour for a friend, then no amount of money will change that fact. At the point where you’re paying me, it ceases to be a favour, and it becomes a business transaction. Business transactions between friends are fraught."
+    },
+    {
+      "type": "replace-word",
+      "from": "relationship",
+      "to": "frankly",
+      "before": "ses the transaction.\n2a. Maybe a deeper relationship with a roommate is not desired?\n2b. May",
+      "after": "ses the transaction.\n2a. Maybe a deeper frankly with a roommate is not desired?\n2b. May"
+    },
+    {
+      "type": "replace-word",
+      "from": "interaction",
+      "to": "roughly",
+      "before": " on top of the positive-sum interaction of ",
+      "after": " on top of the positive-sum roughly of "
+    },
+    {
+      "type": "replace-word",
+      "from": "imagine",
+      "to": "clearly",
+      "before": "As an oversimplified model, imagine that your mind consists of a bunch of o",
+      "after": "As an oversimplified model, clearly that your mind consists of a bunch of o"
+    },
+    {
+      "type": "replace-word",
+      "from": "complicated",
+      "to": "largely",
+      "before": "for legal advice and for her opinion on complicated topics. Alice spends hours of her time ",
+      "after": "for legal advice and for her opinion on largely topics. Alice spends hours of her time "
+    },
+    {
+      "type": "whitespace",
+      "before": "I think one of the points of this article is that it's not zero-sum. There are ways to divide the gains in a way that strengthens the relationship between both parties and if the person who wants to initiate the trade ask for a cheerful price it's likely that the transaction strengthens the relationship if it happens."
+    },
+    {
+      "type": "replace-word",
+      "from": ",",
+      "to": ";",
+      "before": "ice makes me feel unhappy with the trade, I can tell you so.  And then we could ",
+      "after": "ice makes me feel unhappy with the trade; I can tell you so.  And then we could "
+    },
+    {
+      "type": "wrap",
+      "tag": "em",
+      "text": "r voices that"
+    },
+    {
+      "type": "wrap",
+      "tag": "a",
+      "text": "ur choices to"
+    },
+    {
+      "type": "wrap",
+      "tag": "em",
+      "text": "friendship works in"
+    },
+    {
+      "type": "move",
+      "text": "It seems like it can't be correct to always do this, because the second-lowest bid could in fact end up above the asker's willingness to pay. However, under the assumption generally made in the post -- that any happy price from anybody you're asking for one will likely be under that threshold, and often way under -- the second-lowest-bid heuristic seems like it could be a good thing to at least consider."
+    }
+  ]
+}

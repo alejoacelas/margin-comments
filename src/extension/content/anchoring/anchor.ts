@@ -229,7 +229,8 @@ function matchQuoteInIndex(
   if (candidates.length === 0) return null;
 
   const best = candidates[0];
-  if (!acceptable(best, q.length, !!prefix || !!suffix)) return null;
+  const exactCount = candidates.filter(c => c.quoteScore === 1).length;
+  if (!acceptable(best, q.length, !!prefix || !!suffix, exactCount === 1)) return null;
 
   // Prefer a visible match among near-ties (e.g. a duplicated mobile menu).
   const nearTies = candidates.filter(c => c.score >= best.score - 0.02).slice(0, 10);
@@ -255,9 +256,12 @@ function matchQuoteInIndex(
  * Decide whether the best match is good enough to highlight. When in doubt,
  * orphan: a thread in the sidebar beats a thread on the wrong sentence.
  */
-export function acceptable(c: Candidate, quoteLength: number, hasContext: boolean): boolean {
+export function acceptable(c: Candidate, quoteLength: number, hasContext: boolean, uniqueExact = false): boolean {
   const context = hasContext ? (c.prefixScore + c.suffixScore) / 2 : 1;
   if (c.quoteScore === 1) {
+    // The only exact occurrence on the page is strong evidence by itself
+    // (also for CJK, where a few characters are a whole phrase).
+    if (uniqueExact && quoteLength >= 8) return true;
     // Short exact strings ("the", "Introduction") recur; demand some context.
     if (quoteLength < 20) return context >= 0.6;
     if (quoteLength < 60) return context >= 0.35;
@@ -266,6 +270,9 @@ export function acceptable(c: Candidate, quoteLength: number, hasContext: boolea
   if (c.quoteScore < 0.75) return false;
   if (quoteLength < 20) return false;
   if (c.quoteScore >= 0.9) return context >= 0.3 || quoteLength >= 60;
+  // One side of the context still intact (e.g. a paragraph was inserted just
+  // before the passage) plus a mostly intact quote.
+  if (hasContext && c.quoteScore >= 0.8 && Math.max(c.prefixScore, c.suffixScore) >= 0.85) return true;
   return context >= 0.55;
 }
 

@@ -84,7 +84,18 @@ export class Person {
   async openSidebar(page: Page) {
     if (await page.locator('[data-testid=sidebar]').isVisible()) return;
     await this.clickToolbar(page);
-    await expect(page.locator('[data-testid=sidebar]')).toBeVisible();
+    try {
+      await expect(page.locator('[data-testid=sidebar]')).toBeVisible({ timeout: 4000 });
+    } catch (err) {
+      const diag = await this.sw
+        .evaluate(async u => {
+          const tabs = await chrome.tabs.query({});
+          return { tabs: tabs.map(t => `${t.id} ${t.active} ${t.url}`), debug: (globalThis as any).__marginTest.debug?.() };
+        }, page.url())
+        .catch(e => String(e));
+      console.log('[openSidebar diag]', JSON.stringify(diag), 'roots', await page.locator('margin-comments-root').count(), 'workers', this.context.serviceWorkers().length);
+      throw err;
+    }
   }
 
   /** Sign in through the real email flow (code typed into the sidebar). */
