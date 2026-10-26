@@ -44,9 +44,12 @@ Choices made while building this without supervision, with the reasoning.
 - **Shadow DOM, closed mode in production**, attached to `<html>` (outside `<body>`) as a
   custom element, with `:host { all: initial }`. Closed, because with an open root any page
   script could read the account email, drafts and comments in the UI and drive its controls with
-  synthetic events (post as the user). Test builds (`--test-open-shadow`) use an open root so
-  Playwright can drive the UI; one e2e test runs the production build and checks the page can't
-  get in. The session token never leaves the background worker.
+  synthetic events (post as the user). With a closed root the event shield can't see targets
+  through `composedPath()`, so the content script gives it a resolver (shadow-root
+  `elementFromPoint` / `activeElement`); test builds use the same path. Test builds
+  (`--test-open-shadow`) use an open root only so Playwright can find elements; two e2e tests run
+  the production build: one checks the page can't get in, the other drives the UI with real
+  mouse and keyboard input. The session token never leaves the background worker.
 - **Popover top layer** for the adder, cards, sidebar and launcher, so no page z-index or
   transform can cover or displace them.
 - **Event shield** (`early.ts`, at `document_start`): key, pointer, focus, clipboard and input

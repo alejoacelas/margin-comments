@@ -432,6 +432,42 @@ test("page scripts can't read or drive our UI in the production build (closed sh
   }
 });
 
+test('the production build (closed shadow root) works with real mouse and keyboard input', async () => {
+  const user = await Person.launch('prod-ui', `prod-ui-${Date.now()}@example.com`, EXT_PATH_CLOSED);
+  try {
+    const token = await user.signInHeadless();
+    const path = uniquePath('article');
+    const p = await user.open(path);
+    await expect.poll(() => p.evaluate(() => document.querySelector('margin-comments-root')?.shadowRoot === null)).toBe(true);
+    // Select text; the "Comment" chip appears 10px right of the selection, top-aligned.
+    await selectText(p, 'Readers have always written in the margins');
+    const chip = await p.evaluate(() => {
+      const r = document.getSelection()!.getRangeAt(0).getBoundingClientRect();
+      return { x: r.right + 10 + 25, y: Math.max(4, r.top) + 10 };
+    });
+    await p.waitForTimeout(400);
+    await p.mouse.click(chip.x, chip.y);
+    await p.waitForTimeout(400); // let the composer appear and take focus, as a person would
+    // The composer has focus: type with the real keyboard.
+    await p.keyboard.type('Typed into the production build');
+    await p.waitForTimeout(800);
+    const drafts = await user.sw.evaluate(async () => Object.values(((await chrome.storage.local.get('drafts')).drafts ?? {}) as Record<string, { text: string }>).map(d => d.text));
+    expect(drafts).toContain('Typed into the production build');
+    await p.keyboard.press('Enter');
+    await expect
+      .poll(async () => {
+        const r = await fetch(`http://localhost:18788/api/threads?key=${encodeURIComponent(`localhost:18902${path}`)}`, { headers: { authorization: `Bearer ${token}` } });
+        const j = await r.json();
+        return j.threads?.map((t: any) => t.comments[0]?.body) ?? [];
+      })
+      .toEqual(['Typed into the production build']);
+    await expect.poll(() => highlightTexts(p)).toEqual(['Readers have always written in the margins']);
+    expect(user.errors).toEqual([]);
+  } finally {
+    await user.close();
+  }
+});
+
 test("a click on a card's blank area isn't taken over by clipped highlighted text inside it", async ({ alice }) => {
   const path = uniquePath('clip');
   const a = await alice.open(path);

@@ -25,7 +25,7 @@ const HOST_TAG = 'margin-comments-root';
 declare global {
   interface Window {
     __marginComments?: { destroy(): void };
-    __marginCommentsShield?: { host: Element | null };
+    __marginCommentsShield?: { host: Element | null; resolve: ((e: Event) => Node | null) | null };
   }
 }
 
@@ -46,6 +46,19 @@ function hash(s: string): string {
 function inEditable(node: Node | null): boolean {
   const el = node instanceof Element ? node : node?.parentElement;
   return !!el?.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]');
+}
+
+/**
+ * The element inside our (possibly closed) shadow root that an event is
+ * really for: under the pointer for pointer events, else the focused one.
+ */
+function resolveInner(root: ShadowRoot, e: Event): Node | null {
+  if (e instanceof MouseEvent) return root.elementFromPoint(e.clientX, e.clientY) ?? root.activeElement;
+  if (typeof TouchEvent !== 'undefined' && e instanceof TouchEvent) {
+    const t = e.changedTouches[0] ?? e.touches[0];
+    return t ? root.elementFromPoint(t.clientX, t.clientY) : root.activeElement;
+  }
+  return root.activeElement;
 }
 
 /** Line boxes of a range plus the right edge of the block it sits in. */
@@ -140,7 +153,10 @@ class MarginComments implements Actions {
     // (see early.ts for why clicks aren't replayed like other events).
     for (const type of ['click', 'dblclick', 'auxclick']) this.host.addEventListener(type, e => e.stopPropagation());
     document.documentElement.appendChild(this.host);
-    if (window.__marginCommentsShield) window.__marginCommentsShield.host = this.host;
+    if (window.__marginCommentsShield) {
+      window.__marginCommentsShield.host = this.host;
+      window.__marginCommentsShield.resolve = e => resolveInner(shadow, e);
+    }
 
     this.highlighter = new Highlighter(pageIsDark());
     this.anchors = new AnchorManager(
@@ -191,7 +207,10 @@ class MarginComments implements Actions {
       // ignore
     }
     this.host.remove();
-    if (window.__marginCommentsShield?.host === this.host) window.__marginCommentsShield.host = null;
+    if (window.__marginCommentsShield?.host === this.host) {
+      window.__marginCommentsShield.host = null;
+      window.__marginCommentsShield.resolve = null;
+    }
   }
 
   private async loadFonts() {

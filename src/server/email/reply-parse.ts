@@ -87,16 +87,15 @@ function cutQuotedHistory(body: string): string {
   const lines = body.split('\n');
   const cut = findQuoteHeader(lines);
   const top = lines.slice(0, cut).filter(l => !/^\s*>/.test(l));
-  if (cut === lines.length || top.join('').trim()) return top.join('\n');
-  // Nothing above the quote header: a bottom-posted or inline reply. Keep the
-  // unquoted lines that follow the quoted history (minus our own footer).
-  // Only when the history really is quoted with ">" can we tell new text from
-  // old; otherwise (e.g. an unquoted forward of our email) there's nothing new.
+  if (cut === lines.length) return top.join('\n');
+  // Text after the header counts only when the history really is quoted
+  // with ">": then unquoted lines among/after it are bottom-posted or inline
+  // answers. Without ">" quoting (an Outlook-style or unquoted forward) the
+  // text after the header is old content.
   const after = lines.slice(cut + 1);
   const firstQuoted = after.findIndex(l => /^\s*>/.test(l));
-  if (firstQuoted < 0) return '';
-  const rest = after.slice(firstQuoted).filter(l => !/^\s*>/.test(l));
-  return cutQuotedHistory(rest.join('\n'));
+  const answers = firstQuoted < 0 ? '' : cutQuotedHistory(after.slice(firstQuoted).filter(l => !/^\s*>/.test(l)).join('\n'));
+  return [top.join('\n').trim(), answers.trim()].filter(Boolean).join('\n\n');
 }
 
 function findQuoteHeader(lines: string[]): number {

@@ -101,6 +101,10 @@ describe('extractReply', () => {
     expect(extractReply('On Mon, Oct 26, 2026, Bob <bob@example.com> wrote:\n> Earlier comment.\n\nMy new reply.', null)).toBe('My new reply.');
     expect(extractReply('On Mon, Bob wrote:\n> First point\nAgreed on that.\n> Second point\nNot this one.', null)).toBe('Agreed on that.\nNot this one.');
   });
+  it('keeps inline answers below an introduction', () => {
+    const text = 'Hi Bob, answers inline.\n\nOn Mon, Bob wrote:\n> Can we ship Friday?\nYes, Friday works.\n> Which region?\nLondon.';
+    expect(extractReply(text, null)).toBe('Hi Bob, answers inline.\n\nYes, Friday works.\nLondon.');
+  });
   it('does not post an unquoted copy of our own notification', () => {
     const forwarded = 'On Mon, Margin Comments wrote:\nBob replied on "Page"\n\nquote text\n\nReply to this email to respond in the thread.';
     expect(extractReply(forwarded, null)).toBe('');

@@ -19,9 +19,20 @@
  * pages whose capture-phase listeners stop every click.
  */
 
+export type Shield = {
+  host: Element | null;
+  /**
+   * Finds the real target inside our UI. Needed because with a closed shadow
+   * root `composedPath()` seen from the window stops at the host; the content
+   * script (which holds the root) resolves pointer events by position and
+   * keyboard/input events by the focused element.
+   */
+  resolve: ((e: Event) => Node | null) | null;
+};
+
 declare global {
   interface Window {
-    __marginCommentsShield?: { host: Element | null };
+    __marginCommentsShield?: Shield;
   }
 }
 
@@ -75,7 +86,7 @@ function clone(e: Event): Event | null {
 }
 
 if (!window.__marginCommentsShield) {
-  const shield: { host: Element | null } = { host: null };
+  const shield: Shield = { host: null, resolve: null };
   window.__marginCommentsShield = shield;
 
   const onEvent = (e: Event) => {
@@ -87,7 +98,7 @@ if (!window.__marginCommentsShield) {
     // from the page but let them run their default action untouched.
     if (!e.isTrusted) return;
     if (STOP_ONLY.includes(e.type)) return;
-    const inner = e.composedPath()[0];
+    const inner = shield.resolve?.(e) ?? e.composedPath()[0];
     if (!(inner instanceof Node) || inner === host) return;
     const copy = clone(e);
     if (!copy) return;

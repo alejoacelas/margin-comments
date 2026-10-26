@@ -116,7 +116,7 @@ export class Person {
   }
 
   /** Sign in through the API (no UI) and hand the session to the extension. */
-  async signInHeadless() {
+  async signInHeadless(): Promise<string> {
     const start = await (await fetch(`${API}/api/auth/email/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: this.email }) })).json();
     const mail = await waitForEmail(this.email, m => /sign-in code/.test(m.subject));
     const code = /(\d{6})/.exec(mail.subject)![1];
@@ -128,6 +128,7 @@ export class Person {
     const { targetInfos } = await cdp.send('Target.getTargets');
     const target = targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/background.js'));
     if (target) await cdp.send('Target.closeTarget', { targetId: target.targetId });
+    return r.token as string;
   }
 
   async close() {

@@ -139,3 +139,13 @@ deleted this tab's own draft for the same thread) was verified and fixed first, 
 
 Also fixed: two send-time notification tests relied on a 1 ms retry racing the queue's own tick
 (occasionally flaky); they now set the retry time explicitly.
+
+## Round 8 — full repository (2026-10-26)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 / C1 | **Regression from round 7: with the closed shadow root, the event shield couldn't see targets inside the UI (`composedPath()` stops at the host), so every click and keystroke in the production UI was swallowed and drafts weren't saved** | Fixed | The content script, which holds the closed root, gives the shield a resolver (shadow-root `elementFromPoint` for pointer events, `activeElement` otherwise); test builds use the same path. New e2e drives the production build with real mouse and keyboard: chip click → typing → draft saved → submit → on the server. "the production build (closed shadow root) works with real mouse and keyboard input" |
+| B1 | Inline answers below an introduction were dropped | Fixed | Unquoted lines among `>`-quoted history are kept alongside the text above the header. `email.test.ts` "keeps inline answers below an introduction" |
+
+Lesson recorded in DECISIONS.md: the round-7 isolation test only checked that the page couldn't
+get in, not that the user still could; production-mode tests now exercise real input.
