@@ -228,6 +228,15 @@ describe('extractReply', () => {
       expect(performance.now() - t0, html.slice(0, 15)).toBeLessThan(1500);
     }
   });
+  it('deeply nested HTML quotes are converted with bounded time and output', () => {
+    const html = '<blockquote>'.repeat(1000) + '<p>x</p>'.repeat(10000) + '</blockquote>'.repeat(1000);
+    const t0 = performance.now();
+    const out = extractReply(null, html);
+    expect(performance.now() - t0).toBeLessThan(1500);
+    expect(out.length).toBeLessThan(200_000);
+    // Ordinary nesting still works: answers below quotes are kept.
+    expect(extractReply(null, '<div>On Mon, Bob wrote:</div><blockquote type="cite"><blockquote>old</blockquote>older</blockquote><div>My answer.</div>')).toBe('My answer.');
+  });
   it('keeps text below separator lines', () => {
     expect(extractReply('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.', null)).toBe('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.');
     expect(extractReply('Two options:\n===\nA or B.\n\nOn Mon, Bob wrote:\n> which?', null)).toBe('Two options:\n===\nA or B.');

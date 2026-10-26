@@ -84,6 +84,10 @@ const HTML_HISTORY_MARKERS: RegExp[] = [
 function prepareHtml(html: string): string {
   const out: string[] = [];
   let inHead = false;
+  // Quote nesting beyond a few levels is dropped (its text stays): each level
+  // prefixes every line below it, so deep nesting multiplies the output.
+  let quoteDepth = 0;
+  const MAX_QUOTE_DEPTH = 8;
   let i = 0;
   while (i < html.length) {
     const lt = html.indexOf('<', i);
@@ -100,8 +104,13 @@ function prepareHtml(html: string): string {
     const tag = html.slice(lt, Math.min(gt + 1, lt + 2000));
     if (HTML_HISTORY_MARKERS.some(re => re.test(tag))) break;
     const name = /^<\/?\s*([!a-z][a-z0-9-]*)/i.exec(tag)?.[1]?.toLowerCase();
-    if (name === 'head') inHead = tag[1] !== '/';
-    else if (name !== '!doctype' && name !== 'html' && name !== 'body' && !inHead) out.push(html.slice(lt, gt + 1));
+    const closing = tag[1] === '/';
+    if (name === 'head') inHead = !closing;
+    else if (name === 'blockquote') {
+      const depth = closing ? quoteDepth-- : ++quoteDepth;
+      if (depth <= MAX_QUOTE_DEPTH && depth > 0 && !inHead) out.push(html.slice(lt, gt + 1));
+      if (quoteDepth < 0) quoteDepth = 0;
+    } else if (name !== '!doctype' && name !== 'html' && name !== 'body' && !inHead) out.push(html.slice(lt, gt + 1));
     i = gt + 1;
   }
   return out.join('');
@@ -110,6 +119,8 @@ function prepareHtml(html: string): string {
 function htmlToText(html: string): string {
   return convert(prepareHtml(html), {
     wordwrap: false,
+    // Bounded work and output for hostile HTML (deep nesting, huge fan-out).
+    limits: { maxDepth: 40, maxChildNodes: 5000, maxInputLength: MAX_INPUT * 5 },
     selectors: [
       // Keep where a link goes ("my proposal [https://…]"), unless the text is the URL.
       { selector: 'a', options: { hideLinkHrefIfSameAsText: true } },

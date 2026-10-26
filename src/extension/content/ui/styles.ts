@@ -102,6 +102,11 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
    be read by the page (window.find + selectAll). Private text: see Private(). */
 .c-body, .row-quote, .row-first, .resolved-note { -webkit-user-select: text; user-select: text; }
 .pv::before { content: attr(data-t); }
+/* Private text never uses a named font: the page controls the document's font
+   set and could add a face with one of our font names, limited to one
+   character's unicode-range, then watch whether it loads. Generic font
+   keywords can't be taken over by page fonts. Same for your own avatar's initial. */
+.pv, .pv::before, .me .avatar { font-family: system-ui, sans-serif !important; }
 .c-body a { color: var(--mc-send-active); text-decoration: underline; }
 .c-actions { display: flex; gap: 10px; padding: 0 6px 2px; height: 18px; opacity: 0; transition: opacity .1s; }
 .comment:hover .c-actions, .comment:focus-within .c-actions { opacity: 1; }

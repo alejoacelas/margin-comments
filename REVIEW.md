@@ -370,3 +370,12 @@ Reviewers B and C found nothing material.
 
 Both verified to fail on the previous code; corpus unchanged.
 
+## Round 29 — full repository (2026-10-26)
+
+Reviewer A found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| B1 | **Deeply nested blockquotes in an HTML-only reply made the converter's output (and memory) explode: 105 KB took 4.7 s and 551 MiB, above the machine's 512 MB** | Fixed | Quote nesting beyond 8 levels is dropped before conversion (text kept), and the converter runs with depth/child limits. `email.test.ts` "deeply nested HTML quotes are converted with bounded time and output"; verified to fail without the fix |
+| C1 | **Private text drawn in the page could be probed through page-controlled fonts: a face added under one of our font names, limited to one character, loads when that character is shown** | Fixed | Private text (and your own avatar initial) uses only generic font keywords, which page fonts can't take over. The production-build privacy e2e now runs this probe for "@" (email) and "§" (draft) across all our font names; verified to fail without the fix |
+

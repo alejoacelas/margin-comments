@@ -97,7 +97,10 @@ Choices made while building this without supervision, with the reasoning.
   rebuild text a character at a time, nor from `find` + `execCommand('selectAll')`; generated
   content (`content: attr(data-t)`) is invisible to both. The rest of the UI is
   `user-select: none`, except public text (comments, quotes). Test builds render plain text so
-  Playwright can read it; production-build e2e tests check that the page finds nothing. Since
+  Playwright can read it; production-build e2e tests check that the page finds nothing.
+  Private text is drawn only with generic font keywords (`system-ui, sans-serif`): the page
+  controls the document's font set and could add a face under one of our font names, limited
+  to one character, and watch it load; generic keywords can't be taken over. Since
   private text can't be selected, its "Copy text" button is itself an extension frame that
   copies from inside the frame: the text is never selected in the page, and it works on
   plain-HTTP pages, where content scripts have no clipboard API.

@@ -515,7 +515,7 @@ test('the production build (closed shadow root) works with real mouse and keyboa
   }
 });
 
-test("in the production build the page can't find or select your email, name, drafts or unsent comments", async () => {
+test("in the production build the page can't find, select or font-probe your email, name, drafts or unsent comments", async () => {
   const user = await Person.launch('prod-private', `prod-private-${Date.now()}@example.com`, EXT_PATH_CLOSED);
   try {
     await user.signInHeadless();
@@ -531,13 +531,27 @@ test("in the production build the page can't find or select your email, name, dr
     await p.waitForTimeout(400);
     await p.mouse.click(chip.x, chip.y);
     await p.waitForTimeout(400);
-    await p.keyboard.type('Unsent private musings');
+    await p.keyboard.type('Unsent private musings §');
     await p.waitForTimeout(800);
     await p.reload();
     await expect.poll(() => p.evaluate(() => !!document.querySelector('[data-margin-comments]'))).toBe(true);
+    // A font probe: after our fonts are in, the page adds faces under every
+    // font name our UI uses, limited to "@" (in the email) and "§" (in the
+    // draft). Whichever loads would reveal that character in private text.
+    await p.waitForTimeout(1000);
+    await p.evaluate(() => {
+      const names = ['MC Source Sans', 'Source Sans 3', 'Source Sans Pro', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'verdana', 'MC Lora', 'Lora', 'Georgia', 'system-ui', 'sans-serif'];
+      (window as any).__probes = names.map(n => {
+        const face = new FontFace(n, 'url(data:font/woff2;base64,AAAA)', { unicodeRange: 'U+40, U+A7' });
+        document.fonts.add(face);
+        return face;
+      });
+    });
     // Open the sidebar: account (name, email) and the "Unsent drafts" list.
     await user.clickToolbar(p);
     await expect.poll(() => p.evaluate(() => { getSelection()!.removeAllRanges(); return (window as any).find('Unsent drafts'); })).toBe(true);
+    await p.waitForTimeout(800);
+    expect(await p.evaluate(() => ((window as any).__probes as FontFace[]).filter(f => f.status !== 'unloaded').map(f => f.family))).toEqual([]);
     const probe = await p.evaluate(email => {
       const find = (q: string) => {
         getSelection()!.removeAllRanges();
