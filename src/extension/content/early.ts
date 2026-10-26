@@ -28,6 +28,8 @@ export type Shield = {
    * keyboard/input events by the focused element.
    */
   resolve: ((e: Event) => Node | null) | null;
+  /** Registered after the page started running scripts (injected late). */
+  late: boolean;
 };
 
 declare global {
@@ -86,7 +88,7 @@ function clone(e: Event): Event | null {
 }
 
 if (!window.__marginCommentsShield) {
-  const shield: Shield = { host: null, resolve: null };
+  const shield: Shield = { host: null, resolve: null, late: document.readyState !== 'loading' };
   window.__marginCommentsShield = shield;
 
   const onEvent = (e: Event) => {

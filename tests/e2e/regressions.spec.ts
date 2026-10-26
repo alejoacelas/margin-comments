@@ -501,3 +501,67 @@ test('following a thread link on the page that is already open opens the thread'
   }, id);
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText('Linked from an email');
 });
+
+test('keyboard activation of our buttons works (Enter on a focused button)', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=sidebar-close]').focus();
+  await a.keyboard.press('Enter');
+  await expect(a.locator('[data-testid=sidebar]')).toHaveCount(0);
+});
+
+test('Continue opens exactly the chosen draft when two share a selection', async ({ alice }) => {
+  const path = uniquePath('article');
+  const make = async (text: string) => {
+    const p = await alice.open(path);
+    await selectText(p, 'Social highlights for friends');
+    await p.locator('[data-testid=adder]').click();
+    const input = p.locator('[data-testid=composer-input]');
+    await expect(input).toBeFocused();
+    await p.waitForTimeout(200); // the composer restores a saved draft and moves the caret
+    await input.fill(text);
+    await expect(input).toHaveValue(text);
+    await p.waitForTimeout(700);
+    return p;
+  };
+  const first = await alice.open(path);
+  await alice.signIn(first);
+  await first.close();
+  const a = await make('First draft for this selection');
+  const b = await make('Second draft for this selection');
+  await a.close();
+  await b.close();
+  const c = await alice.open(path);
+  await alice.openSidebar(c);
+  for (const text of ['First draft for this selection', 'Second draft for this selection']) {
+    await c.locator('[data-testid=draft-row]').filter({ hasText: text }).getByRole('button', { name: 'Continue' }).click();
+    await expect(c.locator('[data-testid=composer-input]')).toHaveValue(text);
+    await c.keyboard.press('Escape');
+  }
+});
+
+test("submitting in one tab doesn't delete another open tab's shorter draft", async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Open annotation standard', 'Thread');
+  await a.keyboard.press('Escape');
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=sidebar-thread]').click();
+  await a.locator('[data-testid=sidebar-thread] [data-testid=reply-input]').fill('No');
+  await a.waitForTimeout(700);
+  const b = await alice.open(path);
+  await alice.openSidebar(b);
+  await b.locator('[data-testid=sidebar-thread]').click();
+  const boxB = b.locator('[data-testid=sidebar-thread] [data-testid=reply-input]');
+  await boxB.fill('Nobody has tested this yet');
+  await boxB.press('Enter');
+  await expect(b.locator('[data-testid=sidebar-thread] [data-testid=comment-body]')).toHaveText(['Thread', 'Nobody has tested this yet']);
+  await b.close();
+  await a.reload();
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=sidebar-thread]').click();
+  await expect(a.locator('[data-testid=sidebar-thread] [data-testid=reply-input]')).toHaveValue('No');
+});

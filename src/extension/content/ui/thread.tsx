@@ -262,6 +262,7 @@ export function ThreadView(props: {
   drafts: Draft[];
   actions: Actions;
   showHeader: boolean;
+  editingBlocked?: boolean;
 }) {
   const { thread, user, actions } = props;
   const own = isMine(thread, user);
@@ -294,18 +295,33 @@ export function ThreadView(props: {
         </div>
       ) : null}
       {thread.comments.map((c, i) => (
-        <CommentItem key={c.id} thread={thread} comment={c} isFirst={i === 0} user={user} drafts={props.drafts} actions={actions} />
+        <CommentItem key={c.id} thread={thread} comment={c} isFirst={i === 0} user={props.editingBlocked ? null : user} drafts={props.drafts} actions={actions} />
       ))}
-      {user ? <ReplyBox key={thread.id} thread={thread} drafts={props.drafts} actions={actions} /> : null}
+      {user ? (
+        props.editingBlocked ? (
+          <ReloadToEdit />
+        ) : (
+          <ReplyBox key={thread.id} thread={thread} drafts={props.drafts} actions={actions} />
+        )
+      ) : null}
     </div>
   );
 }
 
-export function Composer(props: { quote: string; draftKey: string; drafts: Draft[]; actions: Actions }) {
+export function ReloadToEdit() {
+  return (
+    <div class="hint" style={{ padding: '6px 8px' }} data-testid="reload-to-edit">
+      Margin Comments was installed or updated after this page loaded. Reload the page to write comments here.
+    </div>
+  );
+}
+
+export function Composer(props: { quote: string; draftKey: string; drafts: Draft[]; actions: Actions; initialText?: string; blocked?: boolean }) {
+  if (props.blocked) return <ReloadToEdit />;
   return (
     <div class="composer" data-testid="composer">
       <Editor
-        initial={props.actions.draftText(props.draftKey) ?? ''}
+        initial={props.initialText ?? props.actions.draftText(props.draftKey) ?? ''}
         placeholder="Add a comment"
         draftKey={props.draftKey}
         submitLabel="Comment"

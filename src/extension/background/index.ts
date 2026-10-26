@@ -352,7 +352,13 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
       const own = draftSlot(draftKey, draftInstance);
       if (own) delete drafts[own];
     }
-    const draftConsumed = !!draftKey && (removeDraftsByText(session.user.id, draftKey, [], draftText ?? '', true) || !!draftInstance);
+    // Closed tabs' drafts contained in the submission are consumed; an open
+    // tab's draft only if it's exactly the submitted text.
+    const draftConsumed =
+      !!draftKey &&
+      (removeDraftsByText(session.user.id, draftKey, [], draftText ?? '', false, draftInstance) ||
+        removeDraftsByText(session.user.id, draftKey, draftText ? [draftText] : [], undefined, true) ||
+        !!draftInstance);
     await persist(draftConsumed ? ['outbox', 'drafts'] : ['outbox']);
     broadcastState();
     void flush();

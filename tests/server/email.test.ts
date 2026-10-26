@@ -334,6 +334,19 @@ describe('notifications and inbound replies (through the API)', () => {
     expect((await deliver(original)).json().status).toBe('posted');
     expect((await deliver({ ...original, id: randomUUID() })).json().status).toBe('duplicate');
 
+    // A reply longer than one comment arrives in full, as consecutive comments.
+    const long = Array.from({ length: 300 }, (_, i) => `Paragraph ${i} of a very detailed answer with plenty of words.`).join('\n\n') + '\n\nTHE IMPORTANT LAST LINE';
+    const longMail = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: long, messageId: '<long@mail.example.com>' });
+    expect((await deliver(longMail)).json().status).toBe('posted');
+    const afterLong = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
+    const joined = afterLong.comments.slice(-2).map((c: { body: string }) => c.body).join('\n\n');
+    expect(joined).toContain('THE IMPORTANT LAST LINE');
+    expect(joined.replace(/\s+/g, ' ')).toContain('Paragraph 0 of a very detailed answer');
+    expect(afterLong.comments.every((c: { body: string }) => c.body.length <= 10_000)).toBe(true);
+    for (const c of afterLong.comments.slice(-2)) {
+      await t.app.inject({ method: 'DELETE', url: `/api/comments/${c.id}`, headers: auth(a.token) });
+    }
+
     // Transient failure fetching the email -> 503 so Resend retries; then it works.
     const later = receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], text: 'after a hiccup' });
     t.provider.fetchFailures.push(new RetryableEmailError('503'));

@@ -149,3 +149,13 @@ Also fixed: two send-time notification tests relied on a 1 ms retry racing the q
 
 Lesson recorded in DECISIONS.md: the round-7 isolation test only checked that the page couldn't
 get in, not that the user still could; production-mode tests now exercise real input.
+
+## Round 9 — full repository (2026-10-26)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Keyboard-activated clicks (Enter/Space on a focused button; no pointer position) were resolved to the wrong element in the closed-root shield | Fixed | Keyboard clicks resolve to the focused element; every resolved target must be inside our shadow root. e2e "keyboard activation of our buttons works" |
+| A2 | "Continue" on an older draft opened the newest draft for the same selection | Fixed | The chosen draft's text is carried into the composer. e2e "Continue opens exactly the chosen draft…" |
+| B1 | Email replies over 10,000 characters were truncated | Fixed | Posted in full as consecutive comments (deterministic ids, idempotent). `email.test.ts` long-reply case |
+| C1 | In tabs the extension is injected into after install/update, page listeners registered before our shield can see keystrokes typed in our editors | Fixed | Late-injected instances (shield registered after `document_start`) show threads but disable editors and sign-in with "Reload the page to write comments". Not covered by e2e: Playwright can't install an extension into an already-loaded page |
+| C2 | Submitting in one tab deleted another open tab's draft whose text was a prefix of the submission | Fixed | Open tabs' drafts are only consumed on an exact text match. e2e "submitting in one tab doesn't delete another open tab's shorter draft" |

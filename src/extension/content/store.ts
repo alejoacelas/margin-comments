@@ -24,6 +24,8 @@ export type ComposerTarget = {
   /** Page identity when the text was selected (SPA navigation can't move it). */
   pageKeys: string[];
   pageUrl: string;
+  /** Text to start with when resuming a specific draft. */
+  initialText?: string;
 };
 
 export type UiState = {
@@ -37,6 +39,8 @@ export type UiState = {
   /** Bumped to force re-positioning on scroll/resize. */
   layoutTick: number;
   toast: string | null;
+  /** Editors disabled until reload (the extension was injected into a loaded page). */
+  editingBlocked: boolean;
 };
 
 export type State = {

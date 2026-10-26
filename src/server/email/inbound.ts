@@ -135,16 +135,24 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
     return { status: 'rejected', reason: 'auto-reply' };
   }
 
-  let body = extractReply(email.text, email.html);
+  const body = extractReply(email.text, email.html);
   if (!body) return { status: 'rejected', reason: 'empty reply' };
-  if (body.length > LIMITS.commentBody) body = `${body.slice(0, LIMITS.commentBody - 1)}…`;
 
-  // Deterministic id: a redelivered webhook, or the same message delivered
+  // Deterministic ids: a redelivered webhook, or the same message delivered
   // again (same Message-ID from the same account), can never post twice.
   const messageId = (email.messageId ?? '').trim().toLowerCase();
-  const commentId = messageId ? uuidFrom('inbound-message', `${user.id}:${messageId}`) : uuidFrom('inbound-email', email.id);
+  const baseId = messageId ? `${user.id}:${messageId}` : `email:${email.id}`;
+  // A reply longer than one comment is posted as consecutive comments, so
+  // nothing the sender wrote is dropped.
+  const parts = splitLongText(body, LIMITS.commentBody);
+  const commentId = uuidFrom('inbound-message', baseId);
   try {
-    if (!deps.postComment(user.id, target.threadId, commentId, body)) return { status: 'duplicate' };
+    let created = false;
+    parts.forEach((part, i) => {
+      const id = i === 0 ? commentId : uuidFrom('inbound-message', `${baseId}#${i}`);
+      if (deps.postComment(user.id, target.threadId, id, part)) created = true;
+    });
+    if (!created) return { status: 'duplicate' };
   } catch (err) {
     // Permanent API outcomes (thread deleted, no access) are recorded; anything
     // else propagates so the webhook answers 500 and Resend redelivers.
@@ -154,4 +162,21 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
     throw err;
   }
   return { status: 'posted', threadId: target.threadId, commentId, userId: user.id, body };
+}
+
+/** Split text into chunks of at most `max` characters, preferring paragraph, line and word breaks. */
+export function splitLongText(text: string, max: number): string[] {
+  const out: string[] = [];
+  let rest = text.trim();
+  while (rest.length > max) {
+    const window = rest.slice(0, max);
+    let cut = window.lastIndexOf('\n\n');
+    if (cut < max * 0.5) cut = window.lastIndexOf('\n');
+    if (cut < max * 0.5) cut = window.lastIndexOf(' ');
+    if (cut < max * 0.5) cut = max;
+    out.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) out.push(rest);
+  return out;
 }

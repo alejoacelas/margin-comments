@@ -4,7 +4,7 @@ import type { Draft, Op } from '../../messages';
 import { hueIndexFor, OTHER_HUES } from '../highlights';
 import { isMine, type State, type Store, useStore, viewThreads, type ViewThread } from '../store';
 import type { Actions, AnchorBox } from './actions';
-import { Composer, ThreadView } from './thread';
+import { Composer, ReloadToEdit, ThreadView } from './thread';
 import { Avatar, Icons, Layer, timeAgo } from './util';
 
 const CARD_WIDTH = 248;
@@ -64,6 +64,18 @@ function Card(props: { box: AnchorBox | null; sidebarOpen: boolean; children: pr
 }
 
 function SignIn({ state, actions, compact }: { state: State; actions: Actions; compact?: boolean }) {
+  if (state.ui.editingBlocked) {
+    return (
+      <div class="signin" data-testid="signin">
+        <h3>Sign in to comment</h3>
+        <ReloadToEdit />
+      </div>
+    );
+  }
+  return <SignInForm state={state} actions={actions} compact={compact} />;
+}
+
+function SignInForm({ state, actions, compact }: { state: State; actions: Actions; compact?: boolean }) {
   const [email, setEmail] = useState('');
   const [request, setRequest] = useState<{ requestId: string; email: string; emailMode: string } | null>(null);
   const [code, setCode] = useState('');
@@ -178,7 +190,7 @@ function SignIn({ state, actions, compact }: { state: State; actions: Actions; c
   );
 }
 
-function Account({ user, actions }: { user: Me; actions: Actions }) {
+function Account({ user, actions, blocked }: { user: Me; actions: Actions; blocked?: boolean }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.name);
   return (
@@ -186,7 +198,7 @@ function Account({ user, actions }: { user: Me; actions: Actions }) {
       <div class="me">
         <Avatar name={user.name} own />
         <div class="who">
-          {editing ? (
+          {editing && !blocked ? (
             <form
               onSubmit={e => {
                 e.preventDefault();
@@ -245,7 +257,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
       {props.selected ? (
         <div class="thread-inline" onClick={e => e.stopPropagation()}>
           {props.orphan ? <div class="hint" style={{ padding: '0 6px 4px' }}>The highlighted text can't be found on this page anymore.</div> : null}
-          <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader />
+          <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader editingBlocked={state.ui.editingBlocked} />
         </div>
       ) : first ? (
         <div class="row-first">{first.body}</div>
@@ -439,7 +451,7 @@ function Sidebar({ state, actions }: { state: State; actions: Actions }) {
               {state.ops.some(o => o.status === 'pending') ? 'Offline. Your changes are saved and will sync when you reconnect.' : 'Offline. Reconnecting…'}
             </div>
           ) : null}
-          <Account user={state.user} actions={actions} />
+          <Account user={state.user} actions={actions} blocked={state.ui.editingBlocked} />
         </div>
       ) : null}
     </Layer>
@@ -495,7 +507,15 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       {ui.composer ? (
         <Card box={actions.draftBox()} sidebarOpen={ui.sidebarOpen} testId="composer-card">
           {state.user ? (
-            <Composer key={ui.composer.threadId} quote={ui.composer.quote} draftKey={ui.composer.draftKey} drafts={state.drafts} actions={actions} />
+            <Composer
+              key={ui.composer.threadId}
+              quote={ui.composer.quote}
+              draftKey={ui.composer.draftKey}
+              drafts={state.drafts}
+              actions={actions}
+              initialText={ui.composer.initialText}
+              blocked={ui.editingBlocked}
+            />
           ) : (
             <>
               <SignIn state={state} actions={actions} compact />
@@ -512,7 +532,7 @@ export function App({ store, actions }: { store: Store; actions: Actions }) {
       {showActiveCard && active ? (
         <Card box={actions.anchorBox(active.id)} sidebarOpen={ui.sidebarOpen} testId="thread-card">
           {/* Keyed by thread: switching threads must never carry editor state over. */}
-          <ThreadView key={active.id} thread={active} user={state.user} drafts={state.drafts} actions={actions} showHeader />
+          <ThreadView key={active.id} thread={active} user={state.user} drafts={state.drafts} actions={actions} showHeader editingBlocked={ui.editingBlocked} />
         </Card>
       ) : null}
 
