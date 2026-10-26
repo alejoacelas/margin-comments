@@ -268,3 +268,56 @@ test('on sandboxed pages, an input window survives a service worker restart and 
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Thread', 'Started before and finished after']);
 });
 
+test('comments on text inside web components (open shadow roots)', async ({ alice, bob }) => {
+  const path = uniquePath('webcomponent');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  const quote = 'Shadow paragraph rendered by a web component';
+  const selectInShadow = (page: typeof a) =>
+    page.evaluate(q => {
+      const t = document.querySelector('article-card')!.shadowRoot!.getElementById('shadow-p')!.firstChild as Text;
+      const i = t.data.indexOf(q);
+      getSelection()!.setBaseAndExtent(t, i, t, i + q.length);
+      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    }, quote);
+  const shadowCenter = (page: typeof a) =>
+    page.evaluate(q => {
+      const t = document.querySelector('article-card')!.shadowRoot!.getElementById('shadow-p')!.firstChild as Text;
+      const r = document.createRange();
+      r.setStart(t, t.data.indexOf(q) + 3);
+      r.setEnd(t, t.data.indexOf(q) + 9);
+      const b = r.getBoundingClientRect();
+      return [b.left + b.width / 2, b.top + b.height / 2] as [number, number];
+    }, quote);
+  await selectInShadow(a);
+  await a.locator('[data-testid=adder]').click();
+  const input = a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+  await input.fill('Inside a component');
+  await input.press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Inside a component']);
+  await expect.poll(() => highlightTexts(a)).toEqual([quote]);
+  // Painted: our highlight styles are adopted into the component's shadow root.
+  expect(await a.evaluate(() => document.querySelector('article-card')!.shadowRoot!.adoptedStyleSheets.some(s => [...s.cssRules].some(r => r.cssText.includes('::highlight(mc-own)'))))).toBe(true);
+  await a.keyboard.press('Escape');
+  // Clicking the highlighted text inside the component opens the thread.
+  await a.mouse.click(...(await shadowCenter(a)));
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(1);
+  await a.keyboard.press('Escape');
+  // The component re-renders its text: the thread follows.
+  await a.evaluate(() => (document.querySelector('article-card') as any).rerender());
+  await expect.poll(() => highlightTexts(a), { timeout: 10_000 }).toEqual([quote]);
+  expect(await a.evaluate(() => {
+    const hl = [...(CSS as any).highlights.values()].flatMap((h: Set<Range>) => [...h]);
+    return hl.every((r: Range) => r.startContainer.isConnected);
+  })).toBe(true);
+  // Reload, and a second user: anchored in the component again.
+  await a.reload();
+  await expect.poll(() => highlightTexts(a)).toEqual([quote]);
+  const b = await bob.open(path);
+  await bob.signIn(b);
+  await expect.poll(() => highlightTexts(b)).toEqual([quote]);
+  // Light DOM text around (and slotted into) the component still works.
+  await createThread(a, 'Light paragraph after the component', 'Below it');
+  await expect.poll(async () => (await highlightTexts(a)).sort()).toEqual([quote, 'Light paragraph after the component'].sort());
+});
+

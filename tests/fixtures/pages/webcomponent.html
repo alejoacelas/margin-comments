@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Web Component Fixture</title><link rel="canonical" href="http://localhost:18902/webcomponent">
+<style>body{font:17px/1.6 Georgia,serif;max-width:680px;margin:40px auto;padding:0 20px}</style></head>
+<body><h1>Components</h1>
+<p id="light">Light paragraph before the component, ordinary text.</p>
+<article-card><p slot="extra">Slotted light text that the card shows inside its frame.</p></article-card>
+<p>Light paragraph after the component.</p>
+<script>
+customElements.define('article-card', class extends HTMLElement {
+  constructor() {
+    super();
+    const r = this.attachShadow({ mode: 'open' });
+    r.innerHTML = '<style>p{margin:0 0 12px}</style><h2>Inside the shadow</h2><p id="shadow-p">Shadow paragraph rendered by a web component with its own text.</p><slot name="extra"></slot>';
+  }
+  // Re-render the paragraph (same text, new nodes), as frameworks do.
+  rerender() {
+    const p = this.shadowRoot.getElementById('shadow-p');
+    p.replaceWith(Object.assign(document.createElement('p'), { id: 'shadow-p', textContent: p.textContent }));
+  }
+});
+</script></body></html>

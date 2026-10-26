@@ -41,13 +41,6 @@ const common = {
   sourcemap: false,
 };
 
-await build({ ...common, entryPoints: [join(root, 'src/extension/background/index.ts')], outfile: join(outDir, 'background.js'), format: 'esm' });
-await build({ ...common, entryPoints: [join(root, 'src/extension/content/early.ts')], outfile: join(outDir, 'early.js'), format: 'iife' });
-await build({ ...common, entryPoints: [join(root, 'src/extension/content/index.tsx')], outfile: join(outDir, 'content.js'), format: 'iife' });
-// Text fields run in this extension-origin page, framed by the content UI.
-await build({ ...common, entryPoints: [join(root, 'src/extension/input/input.ts')], outfile: join(outDir, 'input.js'), format: 'iife' });
-copyFileSync(join(root, 'src/extension/input/input.html'), join(outDir, 'input.html'));
-
 // Highlight styles (CSS Custom Highlight API). Names must match highlights.ts.
 const HUES = [0, 22, 95, 125, 155, 180, 200, 222, 250, 278, 305, 335];
 const rule = (name, body) => `::highlight(${name}) { ${body} }`;
@@ -63,7 +56,23 @@ for (const dark of [false, true]) {
   });
   css.push(rule(`mc-draft${d}`, dark ? 'background-color: rgba(235, 190, 0, 0.55);' : 'background-color: rgba(255, 222, 0, 0.6);'));
 }
-writeFileSync(join(outDir, 'highlights.css'), `/* Margin Comments highlights (CSS Custom Highlight API). */\n${css.join('\n')}\n`);
+const highlightCss = `/* Margin Comments highlights (CSS Custom Highlight API). */\n${css.join('\n')}\n`;
+
+await build({ ...common, entryPoints: [join(root, 'src/extension/background/index.ts')], outfile: join(outDir, 'background.js'), format: 'esm' });
+await build({ ...common, entryPoints: [join(root, 'src/extension/content/early.ts')], outfile: join(outDir, 'early.js'), format: 'iife' });
+// The content script also needs the highlight styles as text, for web components' shadow roots.
+await build({
+  ...common,
+  define: { ...common.define, __HIGHLIGHT_CSS__: JSON.stringify(highlightCss) },
+  entryPoints: [join(root, 'src/extension/content/index.tsx')],
+  outfile: join(outDir, 'content.js'),
+  format: 'iife',
+});
+// Text fields run in this extension-origin page, framed by the content UI.
+await build({ ...common, entryPoints: [join(root, 'src/extension/input/input.ts')], outfile: join(outDir, 'input.js'), format: 'iife' });
+copyFileSync(join(root, 'src/extension/input/input.html'), join(outDir, 'input.html'));
+
+writeFileSync(join(outDir, 'highlights.css'), highlightCss);
 
 for (const size of [16, 32, 48, 128]) copyFileSync(join(root, `src/extension/icons/icon-${size}.png`), join(outDir, `icons/icon-${size}.png`));
 const fonts = [

@@ -44,6 +44,8 @@ const MAX_WAIT_MS = 6000;
 export class AnchorManager {
   private entries = new Map<string, Entry>();
   private observer: MutationObserver | null = null;
+  /** Web components' shadow roots being watched (the document observer can't see into them). */
+  private observedRoots = new WeakSet<ShadowRoot>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private timerDue = 0;
   private lastRun = 0;
@@ -80,13 +82,17 @@ export class AnchorManager {
       if (layout) this.layoutDirty = true;
       if (text || layout) this.schedule();
     });
-    this.observer.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['class', 'style', 'hidden', 'open'],
-    });
+    this.observer.observe(document.documentElement, OBSERVE);
+  }
+
+  /** Watch the shadow roots a text index walked into, so their changes re-anchor too. */
+  private observeShadowRoots(index: TextIndex) {
+    if (!this.observer) return;
+    for (const r of index.shadowRoots) {
+      if (this.observedRoots.has(r)) continue;
+      this.observedRoots.add(r);
+      this.observer.observe(r, OBSERVE);
+    }
   }
 
   destroy() {
@@ -291,7 +297,17 @@ export class AnchorManager {
       if (e.state.status === 'orphan' && e.nextTry < nextRetry) nextRetry = e.nextTry;
     }
     if (nextRetry !== Infinity) this.schedule(Math.max(0, nextRetry - now));
+    const built = index as TextIndex | null;
+    if (built) this.observeShadowRoots(built);
     if (changed) this.onChange();
     this.onLayout();
   }
 }
+
+const OBSERVE: MutationObserverInit = {
+  childList: true,
+  subtree: true,
+  characterData: true,
+  attributes: true,
+  attributeFilter: ['class', 'style', 'hidden', 'open'],
+};

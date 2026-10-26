@@ -232,3 +232,43 @@ test('an edited repeat that moved past its unchanged copy keeps its thread (save
   expect(res).toEqual({ id: 'b', method: 'fuzzy' });
 });
 
+test('text inside web components (open shadow roots, slots) is described and anchored', async ({ page }) => {
+  await load(page, `<main><p id="before">Light text before the component.</p><x-card><span slot="s">Slotted light words.</span></x-card><p id="after">Light text after the component.</p></main>`);
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const host = document.querySelector('x-card')!;
+    const root = host.attachShadow({ mode: 'open' });
+    root.innerHTML = '<p id="in">Words rendered inside the shadow root here.</p><slot name="s"></slot>';
+    const t = root.getElementById('in')!.firstChild as Text;
+    const r = document.createRange();
+    r.setStart(t, 6);
+    r.setEnd(t, 30);
+    const desc = mc.describeRange(document.body, r);
+    const inShadow = mc.anchorSelectors(document.body, desc.selectors);
+    // A light-DOM thread after the component still anchors via its position.
+    const after = document.getElementById('after')!.firstChild as Text;
+    const r2 = document.createRange();
+    r2.setStart(after, 0);
+    r2.setEnd(after, 10);
+    const light = mc.anchorSelectors(document.body, mc.describeRange(document.body, r2).selectors);
+    // Slotted light text is part of the page text where it renders.
+    const index = new mc.TextIndex(document.body);
+    return {
+      quote: desc.quote,
+      types: desc.selectors.map((s: any) => s.type).sort(),
+      anchored: inShadow && inShadow.range.toString(),
+      inShadowRoot: inShadow && inShadow.range.startContainer.getRootNode() === root,
+      light: light && light.range.toString(),
+      order: index.text.indexOf('Wordsrendered') < index.text.indexOf('Slottedlight') && index.text.indexOf('Slottedlight') < index.text.indexOf('Lighttextafter'),
+    };
+  });
+  expect(res).toEqual({
+    quote: 'rendered inside the shad',
+    types: ['TextPositionSelector', 'TextQuoteSelector'],
+    anchored: 'rendered inside the shad',
+    inShadowRoot: true,
+    light: 'Light text',
+    order: true,
+  });
+});
+

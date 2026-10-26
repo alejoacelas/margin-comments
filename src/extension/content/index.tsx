@@ -7,7 +7,7 @@ import type { Selector, TextPositionSelector, Thread } from '../../shared/types'
 import { LIMITS } from '../../shared/types';
 import { type PageIdentity, pageIdentity, threadIdFromUrl } from '../../shared/url';
 import type { Draft, InputCommand, InputEventType, InputInit, NewOp, ToContent } from '../messages';
-import { anchorSelectors, describeRange } from './anchoring/anchor';
+import { anchorSelectors, composedContains, describeRange } from './anchoring/anchor';
 import { AnchorManager } from './anchoring/manager';
 import { Highlighter, hueIndexFor, pageIsDark } from './highlights';
 import { BackgroundPort } from './port';
@@ -45,6 +45,52 @@ function hash(s: string): string {
     h = Math.imul(h, 0x01000193);
   }
   return (h >>> 0).toString(36);
+}
+
+/**
+ * The selected range, also when it's inside a web component: Chrome reports
+ * such a selection retargeted to the shadow host (the range doesn't hold the
+ * text that's selected); `getComposedRanges` with the open shadow roots gives
+ * the real one. Null if it crosses a shadow boundary (a Range can't).
+ */
+function selectedRange(sel: Selection): Range | null {
+  const range = sel.getRangeAt(0);
+  const composed = (sel as Selection & { getComposedRanges?: (...args: unknown[]) => StaticRange[] }).getComposedRanges;
+  if (typeof composed !== 'function') return range;
+  const roots = openShadowRoots(document.documentElement);
+  if (roots.length === 0) return range;
+  let ranges: StaticRange[];
+  try {
+    ranges = composed.call(sel, { shadowRoots: roots });
+  } catch {
+    try {
+      ranges = composed.call(sel, ...roots); // older signature
+    } catch {
+      return null;
+    }
+  }
+  const r = ranges[0];
+  if (!r || r.startContainer.getRootNode() !== r.endContainer.getRootNode()) return null;
+  const out = document.createRange();
+  out.setStart(r.startContainer, r.startOffset);
+  out.setEnd(r.endContainer, r.endOffset);
+  return out;
+}
+
+/** Open shadow roots under `root`, nested ones included. */
+function openShadowRoots(root: Node): ShadowRoot[] {
+  const out: ShadowRoot[] = [];
+  const visit = (top: Node) => {
+    const walker = document.createTreeWalker(top, NodeFilter.SHOW_ELEMENT);
+    for (let el = walker.nextNode() as Element | null; el; el = walker.nextNode() as Element | null) {
+      if (el.shadowRoot) {
+        out.push(el.shadowRoot);
+        visit(el.shadowRoot);
+      }
+    }
+  };
+  visit(root);
+  return out;
 }
 
 function inEditable(node: Node | null): boolean {
@@ -484,8 +530,8 @@ class MarginComments implements Actions {
     };
     const sel = document.getSelection();
     if (!sel || sel.isCollapsed || sel.rangeCount === 0 || !document.body) return hide();
-    const range = sel.getRangeAt(0);
-    if (!document.body.contains(range.commonAncestorContainer)) return hide();
+    const range = selectedRange(sel);
+    if (!range || !composedContains(document.body, range.commonAncestorContainer)) return hide();
     if (inEditable(range.startContainer) || inEditable(range.endContainer)) return hide();
     if (!range.toString().trim()) return hide();
     const rects = Array.from(range.getClientRects()).filter(r => r.width > 0 && r.height > 0);
@@ -608,7 +654,8 @@ class MarginComments implements Actions {
     if (!sel || sel.rangeCount === 0 || !document.body) return;
     // The URL may have changed (SPA navigation) since the last poll.
     this.checkUrl();
-    const desc = describeRange(document.body, sel.getRangeAt(0).cloneRange());
+    const picked = selectedRange(sel);
+    const desc = picked ? describeRange(document.body, picked.cloneRange()) : null;
     if (!desc) {
       this.toast("Can't comment on that selection.");
       return;

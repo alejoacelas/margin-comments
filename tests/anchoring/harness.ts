@@ -5,7 +5,10 @@ import { renderedTextFromRange } from '../../src/extension/content/anchoring/hyp
 import { TextRange } from '../../src/extension/content/anchoring/hypothesis/text-range';
 import type { Selector } from '../../src/shared/types';
 
-function rawOffset(range: Range): number {
+/** Raw offset of a range's start, in the index's terms when given (it also counts web components' text). */
+function rawOffset(range: Range, index?: TextIndex): number {
+  const viaIndex = index?.rawOffsetOf(range.startContainer, range.startOffset);
+  if (viaIndex !== undefined && viaIndex !== null) return viaIndex;
   return TextRange.fromRange(range).relativeTo(document.body).start.offset;
 }
 
@@ -120,7 +123,7 @@ function anchorAll(list: Array<{ selectors: Selector[] }>, opts: { quoteOnly?: b
     const r = anchorSelectors(document.body, sels, { index });
     const ms = performance.now() - t0;
     if (!r) return { anchored: false, ms };
-    const raw = rawOffset(r.range);
+    const raw = rawOffset(r.range, index);
     // Visible text (inline <style>/<script> excluded, as in quotes).
     const text = renderedTextFromRange(r.range);
     const sStart = index.fromRaw(raw);
@@ -129,4 +132,4 @@ function anchorAll(list: Array<{ selectors: Selector[] }>, opts: { quoteOnly?: b
   return { results, text: index.text };
 }
 
-(window as unknown as { __mc: unknown }).__mc = { makeSelections, selectionsFor, anchorAll, stripWs, describeRange, anchorSelectors, AnchorManager };
+(window as unknown as { __mc: unknown }).__mc = { makeSelections, selectionsFor, anchorAll, stripWs, describeRange, anchorSelectors, AnchorManager, TextIndex };

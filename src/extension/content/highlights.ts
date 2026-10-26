@@ -11,6 +11,9 @@
 
 export const OTHER_HUES = [0, 22, 95, 125, 155, 180, 200, 222, 250, 278, 305, 335];
 
+/** highlights.css as text (build-time), for shadow roots: page styles don't reach into them. */
+declare const __HIGHLIGHT_CSS__: string;
+
 export type HighlightKind = 'own' | number; // number = index into OTHER_HUES
 
 export function highlightName(kind: HighlightKind | 'draft', active: boolean, dark: boolean): string {
@@ -53,6 +56,7 @@ const HOVER_CACHE_MS = 250;
 export class Highlighter {
   private highlights = new Map<string, Highlight>();
   private items: Cached[] = [];
+  private shadowSheet: CSSStyleSheet | null = null;
   readonly supported: boolean;
 
   constructor(private dark: boolean) {
@@ -83,8 +87,31 @@ export class Highlighter {
     for (const h of this.highlights.values()) h.clear();
     for (const { threadId: _t, range, kind, active } of items) {
       this.get(highlightName(kind, active, this.dark), active ? 2 : 1).add(range);
+      this.styleRoot(range);
     }
-    if (draft) this.get(highlightName('draft', false, this.dark), 3).add(draft);
+    if (draft) {
+      this.get(highlightName('draft', false, this.dark), 3).add(draft);
+      this.styleRoot(draft);
+    }
+  }
+
+  /**
+   * Text inside a web component's shadow root is only painted with styles
+   * from that root, so our ::highlight rules are adopted there too (not a DOM
+   * node; re-added if the component resets its sheets).
+   */
+  private styleRoot(range: Range) {
+    const root = range.startContainer.getRootNode();
+    if (!(root instanceof ShadowRoot) || typeof __HIGHLIGHT_CSS__ === 'undefined') return;
+    try {
+      if (!this.shadowSheet) {
+        this.shadowSheet = new CSSStyleSheet();
+        this.shadowSheet.replaceSync(__HIGHLIGHT_CSS__);
+      }
+      if (!root.adoptedStyleSheets.includes(this.shadowSheet)) root.adoptedStyleSheets = [...root.adoptedStyleSheets, this.shadowSheet];
+    } catch {
+      // unstyled highlight: still anchored and listed
+    }
   }
 
   /** Forget cached geometry (after scroll, resize or DOM changes). */
@@ -99,7 +126,7 @@ export class Highlighter {
    */
   hitTest(x: number, y: number, fresh = true): string | null {
     let best: Cached | null = null;
-    let under: Element | null | undefined;
+    let under: { element: Element; shadowRoots: ShadowRoot[] } | null | undefined;
     const now = performance.now();
     for (const c of this.items) {
       if (fresh || !c.rects || now - c.rectsAt > HOVER_CACHE_MS) {
@@ -110,9 +137,9 @@ export class Highlighter {
       if (!hit) continue;
       // The text must actually be what's under the pointer: rects also cover
       // text clipped by an overflow container or hidden under something else.
-      under ??= document.elementFromPoint(x, y);
-      if (!under || !c.item.range.intersectsNode(under)) continue;
-      if (fresh && !textShownAt(c.item.range, x, y)) continue;
+      under ??= deepElementFromPoint(x, y);
+      if (!under || !c.item.range.intersectsNode(under.element)) continue;
+      if (fresh && !textShownAt(c.item.range, x, y, under.shadowRoots)) continue;
       if (c.length < 0) c.length = c.item.range.toString().length;
       if (!best || c.length < best.length) best = c;
     }
@@ -151,20 +178,41 @@ function luminance([r, g, b]: number[]): number {
 }
 
 /**
+ * The element under a viewport point, looking into open shadow roots (web
+ * components), with the roots passed through (for caret lookups).
+ */
+export function deepElementFromPoint(x: number, y: number): { element: Element; shadowRoots: ShadowRoot[] } | null {
+  const top = document.elementFromPoint(x, y);
+  if (!top) return null;
+  let element: Element = top;
+  const shadowRoots: ShadowRoot[] = [];
+  for (let depth = 0; depth < 32; depth++) {
+    const root: ShadowRoot | null = element.shadowRoot;
+    if (!root) break;
+    const inner: Element | null = root.elementFromPoint(x, y);
+    if (!inner || inner === element) break;
+    shadowRoots.push(root);
+    element = inner;
+  }
+  return { element, shadowRoots };
+}
+
+/**
  * Is a character of `range` actually painted at (x, y)? The character next to
  * the caret position under the pointer must be in the range and its box must
  * contain the point (browsers report the nearest caret even over blank space,
  * and a range's rects include full-width boxes for wholly covered blocks), and
  * no clipping ancestor (overflow other than visible) may cut that point off.
  */
-export function textShownAt(range: Range, x: number, y: number): boolean {
+export function textShownAt(range: Range, x: number, y: number, shadowRoots: ShadowRoot[] = []): boolean {
   const doc = document as Document & {
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+    caretPositionFromPoint?: (x: number, y: number, options?: { shadowRoots: ShadowRoot[] }) => { offsetNode: Node; offset: number } | null;
   };
   let node: Node | null = null;
   let offset = 0;
   if (typeof doc.caretPositionFromPoint === 'function') {
-    const pos = doc.caretPositionFromPoint(x, y);
+    // Without the roots, a position inside a web component is reported at its host.
+    const pos = shadowRoots.length ? doc.caretPositionFromPoint(x, y, { shadowRoots }) : doc.caretPositionFromPoint(x, y);
     node = pos?.offsetNode ?? null;
     offset = pos?.offset ?? 0;
   } else {
@@ -182,7 +230,7 @@ export function textShownAt(range: Range, x: number, y: number): boolean {
     return Array.from(ch.getClientRects()).some(r => x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1);
   });
   if (!onChar) return false;
-  for (let el = node.parentElement; el && el !== document.documentElement; el = el.parentElement) {
+  for (let el: Element | null = node.parentElement; el && el !== document.documentElement; el = composedParent(el)) {
     const cs = getComputedStyle(el);
     if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
       const r = el.getBoundingClientRect();
@@ -190,4 +238,11 @@ export function textShownAt(range: Range, x: number, y: number): boolean {
     }
   }
   return true;
+}
+
+/** The parent element, crossing out of a shadow root to its host. */
+function composedParent(el: Element): Element | null {
+  if (el.parentElement) return el.parentElement;
+  const root = el.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
 }

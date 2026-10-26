@@ -250,3 +250,12 @@ Reviewer C found nothing material.
 | B1 | **Outlook replies (history included unquoted under a `From:`/`Sent:` block) were cut at the header, but the `> quote` line inside our own notification made the parser treat the rest as inline answers, so earlier comments and the thread link were posted as the user's reply** | Fixed | Only "On … wrote:" headers (Gmail, Apple Mail, Thunderbird; localized) recover inline answers; after Outlook separators, forwards and our footer everything is cut. `email.test.ts` "an Outlook reply quoting our notification unquoted posts only the new text" (real notification text, three Outlook layouts); verified to fail without the fix |
 | A1 | The saved range/position shortcuts skipped the edited-repeat rule: an edited passage moved past its unchanged copy lost its thread to the copy | Fixed | Shortcut hits are checked against quote matching, which wins when it picks the thread's own edited passage; that rule now also accepts a passage with one side of its context intact (moves change the other). Corpus unchanged. Anchoring regression "an edited repeat that moved past its unchanged copy…"; verified to fail without the fix |
 
+## Round 18 — full repository (2026-10-26)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| B1 | HTML-only Outlook replies: dropping Outlook's header element left the quoted notification (its siblings) in the text, which was posted | Fixed | The HTML is cut at the client's history marker (Outlook web/desktop/new, Apple Mail, Yahoo, Thunderbird) before conversion. `email.test.ts` "an HTML-only Outlook reply quoting our notification…" (real notification HTML, Outlook web and desktop); verified to fail without the fix |
+| A1 | Text inside web components (open shadow roots) couldn't be commented on: no Comment button, and neither describe nor anchoring saw shadow text | Fixed | The text index walks the flat tree (open shadow roots, slots) and maps offsets itself; selections come from `getComposedRanges`; shadow selections get position + quote selectors; hit-testing, mutation observing and highlight styles reach into the roots. Corpus unchanged (the harness now measures positions through the index, since MDN's edited snapshot has declarative shadow roots). e2e "comments on text inside web components" (comment, paint, click, re-render, reload, second user); anchoring regression for shadow and slotted text |
+

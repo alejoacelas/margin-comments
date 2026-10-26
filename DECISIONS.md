@@ -25,6 +25,14 @@ Choices made while building this without supervision, with the reasoning.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
   `<script>/<style>/<noscript>/<template>`, so re-indentation, minification and `<br>`/block
   changes never break an anchor.
+- **Web components:** the text index walks the page as rendered: open shadow roots in place of
+  their host's children, slots showing what's assigned to them (closed roots can't be read, by
+  design). Selections inside a component come from `getComposedRanges`, their selectors are
+  position + quote (no XPath across shadow boundaries), clicks are hit-tested through the roots,
+  their mutations are observed, and our `::highlight` rules are adopted into the component's
+  shadow root (page styles don't reach in; a stylesheet, not a DOM node). For pages without
+  shadow roots offsets are exactly `textContent` offsets, as before (corpus unchanged). A quote
+  that crosses a shadow boundary can't be one Range and isn't supported.
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
   context; short exact strings need context unless they're unique on the page; matches are only
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is

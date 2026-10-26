@@ -45,15 +45,26 @@ export function collapseWs(s: string): string {
 }
 
 /**
- * Whitespace-free projection of `root`'s text, with a map from each
- * projected character back to its offset in `root.textContent`.
+ * Whitespace-free projection of the page text under `root`, as rendered: open
+ * shadow roots (web components) are walked in place of their host's light
+ * children, and slots show what's assigned to them. Keeps a map from each
+ * projected character back to its "raw" offset: the offset in the
+ * concatenation of all text nodes walked (script/style included, as in
+ * `textContent`; for pages without shadow roots raw offsets are exactly
+ * `root.textContent` offsets).
  */
 export class TextIndex {
   readonly root: Element;
   readonly text: string;
-  /** rawOffsets[i] = offset in root.textContent of text[i]. */
+  /** rawOffsets[i] = raw offset of text[i]. */
   readonly rawOffsets: Int32Array;
   readonly rawLength: number;
+  /** Every text node walked, in order, with its raw start offset. */
+  private readonly nodes: Text[] = [];
+  private readonly starts: number[] = [];
+  private nodeIndex: Map<Text, number> | null = null;
+  /** Open shadow roots whose content is part of the text (to observe for changes). */
+  readonly shadowRoots: ShadowRoot[] = [];
 
   constructor(root: Element) {
     this.root = root;
@@ -61,11 +72,11 @@ export class TextIndex {
     let offsets = new Int32Array(4096);
     let n = 0;
     let raw = 0;
-    const skipCache = new Map<Element, boolean>();
-    const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    const add = (node: Text, skipped: boolean) => {
       const data = node.data;
-      if (!isSkipped(node, root, skipCache)) {
+      this.nodes.push(node);
+      this.starts.push(raw);
+      if (!skipped) {
         if (n + data.length > offsets.length) {
           const bigger = new Int32Array(Math.max(offsets.length * 2, n + data.length));
           bigger.set(offsets);
@@ -77,13 +88,60 @@ export class TextIndex {
         parts.push(data.replace(/\s+/g, ''));
       }
       raw += data.length;
-    }
+    };
+    const doc = root.ownerDocument;
+    const walkTree = (top: Node, topSkipped: boolean, inShadow: boolean) => {
+      const skipCache = new Map<Element, boolean>();
+      const walker = doc.createTreeWalker(top, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          add(node as Text, topSkipped || isSkipped(node, top, skipCache));
+          node = walker.nextNode();
+          continue;
+        }
+        const el = node as Element;
+        const shadow = el.shadowRoot;
+        if (shadow) {
+          // A web component: what renders is its shadow tree.
+          this.shadowRoots.push(shadow);
+          walkTree(shadow, topSkipped || isSkipped(el, top, skipCache) || SKIP_TAGS.has(el.tagName), true);
+        } else if (inShadow && el.localName === 'slot') {
+          const assigned = (el as HTMLSlotElement).assignedNodes({ flatten: true });
+          if (assigned.length === 0) {
+            node = walker.nextNode(); // fallback content
+            continue;
+          }
+          const sk = topSkipped || isSkipped(el, top, skipCache);
+          for (const a of assigned) {
+            if (a.nodeType === Node.TEXT_NODE) add(a as Text, sk);
+            else if (a.nodeType === Node.ELEMENT_NODE) walkElement(a as Element, sk);
+          }
+        } else {
+          node = walker.nextNode();
+          continue;
+        }
+        // Skip the element's own light children (rendered via slots, if at all).
+        node = nextOutside(walker, top);
+      }
+    };
+    /** An element and its subtree (slotted content). */
+    const walkElement = (el: Element, skipped: boolean) => {
+      const sk = skipped || SKIP_TAGS.has(el.tagName);
+      if (el.shadowRoot) {
+        this.shadowRoots.push(el.shadowRoot);
+        walkTree(el.shadowRoot, sk, true);
+      } else {
+        walkTree(el, sk, false);
+      }
+    };
+    walkTree(root, false, false);
     this.text = parts.join('');
     this.rawOffsets = offsets.subarray(0, n);
     this.rawLength = raw;
   }
 
-  /** Convert a [start, end) span of `text` into raw textContent offsets. */
+  /** Convert a [start, end) span of `text` into raw offsets. */
   toRaw(start: number, end: number): [number, number] {
     return [this.rawOffsets[start], this.rawOffsets[end - 1] + 1];
   }
@@ -99,6 +157,70 @@ export class TextIndex {
     }
     return lo;
   }
+
+  /** The text node containing raw offset `raw` (the last one starting at or before it). */
+  private nodeAt(raw: number): number {
+    let lo = 0;
+    let hi = this.starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.starts[mid] <= raw) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo;
+  }
+
+  /**
+   * A DOM Range for raw offsets [start, end): from the character at `start`
+   * to the one before `end`. Null if empty, out of bounds, or spanning
+   * different trees (a Range can't cross a shadow boundary).
+   */
+  rangeFor(start: number, end: number): Range | null {
+    if (end <= start || start < 0 || end > this.rawLength || this.nodes.length === 0) return null;
+    let i = this.nodeAt(start);
+    // Start inside a node (skip empty nodes / a start at a node's very end).
+    while (i < this.nodes.length - 1 && start - this.starts[i] >= this.nodes[i].length) i++;
+    const j = this.nodeAt(end - 1);
+    const a = this.nodes[i];
+    const b = this.nodes[j];
+    if (a.getRootNode() !== b.getRootNode()) return null;
+    const range = a.ownerDocument.createRange();
+    range.setStart(a, Math.min(a.length, start - this.starts[i]));
+    range.setEnd(b, Math.min(b.length, end - this.starts[j]));
+    return range;
+  }
+
+  /** Raw offset of a DOM position inside a walked text node (null otherwise). */
+  rawOffsetOf(node: Node, offset: number): number | null {
+    if (node.nodeType !== Node.TEXT_NODE) return null;
+    if (!this.nodeIndex) {
+      this.nodeIndex = new Map();
+      this.nodes.forEach((t, k) => this.nodeIndex!.set(t, k));
+    }
+    const k = this.nodeIndex.get(node as Text);
+    return k === undefined ? null : this.starts[k] + offset;
+  }
+
+  /** The raw text between two raw offsets (as `textContent` would have it). */
+  rawSlice(start: number, end: number): string {
+    start = Math.max(0, start);
+    end = Math.min(this.rawLength, end);
+    let out = '';
+    for (let k = this.nodeAt(start); k < this.nodes.length && this.starts[k] < end; k++) {
+      const s = this.starts[k];
+      out += this.nodes[k].data.slice(Math.max(0, start - s), Math.max(0, end - s));
+    }
+    return out;
+  }
+}
+
+/** Move a TreeWalker past the current node's subtree (stays within `top`). */
+function nextOutside(walker: TreeWalker, top: Node): Node | null {
+  for (let n: Node | null = walker.currentNode; n && n !== top; n = walker.parentNode()) {
+    const sib = walker.nextSibling();
+    if (sib) return sib;
+  }
+  return null;
 }
 
 /** Same set as the regex `\s` (so `text` and `rawOffsets` stay aligned). */
@@ -118,7 +240,7 @@ function isWsCode(c: number): boolean {
   );
 }
 
-function isSkipped(node: Node, root: Element, cache: Map<Element, boolean>): boolean {
+function isSkipped(node: Node, root: Node, cache: Map<Element, boolean>): boolean {
   const parent = node.parentElement;
   if (!parent || parent === root) return false;
   const cached = cache.get(parent);
@@ -134,6 +256,16 @@ function isSkipped(node: Node, root: Element, cache: Map<Element, boolean>): boo
   }
   cache.set(parent, skipped);
   return skipped;
+}
+
+/** Is `node` inside `root`, also through (open or closed) shadow boundaries? */
+export function composedContains(root: Node, node: Node | null): boolean {
+  for (let n: Node | null = node; n; ) {
+    if (root.contains(n)) return true;
+    const r = n.getRootNode();
+    n = r instanceof ShadowRoot ? r.host : null;
+  }
+  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -153,7 +285,8 @@ export type Description = {
  * outside `root`.
  */
 export function describeRange(root: Element, range: Range): Description | null {
-  if (!root.contains(range.commonAncestorContainer)) return null;
+  const inShadow = range.commonAncestorContainer.getRootNode() instanceof ShadowRoot;
+  if (inShadow ? !composedContains(root, range.commonAncestorContainer) : !root.contains(range.commonAncestorContainer)) return null;
   if (!range.toString().trim()) return null;
   let trimmed: Range;
   try {
@@ -161,10 +294,34 @@ export function describeRange(root: Element, range: Range): Description | null {
   } catch {
     return null;
   }
-  const selectors = hypothesisDescribe(root, trimmed);
+  const selectors = inShadow ? describeInShadow(root, trimmed) : hypothesisDescribe(root, trimmed);
+  if (!selectors) return null;
   const quoteSel = selectors.find((s): s is TextQuoteSelector => s.type === 'TextQuoteSelector');
   if (!quoteSel || !stripWs(quoteSel.exact)) return null;
   return { selectors, quote: collapseWs(quoteSel.exact), range: trimmed };
+}
+
+/**
+ * Selectors for a range inside a web component (an open shadow root), where
+ * Hypothesis's light-DOM describe can't reach: position and quote come from
+ * the page's rendered text (our index); no RangeSelector (XPath can't cross a
+ * shadow boundary).
+ */
+function describeInShadow(root: Element, range: Range): Selector[] | null {
+  const index = new TextIndex(root);
+  const start = index.rawOffsetOf(range.startContainer, range.startOffset);
+  const end = index.rawOffsetOf(range.endContainer, range.endOffset);
+  if (start === null || end === null || end <= start) return null;
+  const CONTEXT = 32;
+  return [
+    { type: 'TextPositionSelector', start, end },
+    {
+      type: 'TextQuoteSelector',
+      exact: index.rawSlice(start, end),
+      prefix: index.rawSlice(start - CONTEXT, start),
+      suffix: index.rawSlice(end, end + CONTEXT),
+    },
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -211,12 +368,8 @@ export function anchorSelectors(
     }
   }
   if (!shortcut && position && unique) {
-    try {
-      const r = TextPositionAnchor.fromSelector(root, position).toRange();
-      if (verifies(r)) shortcut = { range: r, method: 'position', quoteScore: 1 };
-    } catch {
-      // fall through
-    }
+    const r = index.rangeFor(position.start, position.end);
+    if (r && verifies(r)) shortcut = { range: r, method: 'position', quoteScore: 1 };
   }
 
   const viaQuote = matchQuoteInIndex(index, quote, position?.start);
@@ -332,11 +485,7 @@ export function acceptable(c: Candidate, quoteLength: number, hasContext: boolea
 function toRange(index: TextIndex, cand: { start: number; end: number }): Range | null {
   if (cand.end <= cand.start) return null;
   const [rawStart, rawEnd] = index.toRaw(cand.start, cand.end);
-  try {
-    return new TextPositionAnchor(index.root, rawStart, rawEnd).toRange();
-  } catch {
-    return null;
-  }
+  return index.rangeFor(rawStart, rawEnd);
 }
 
 /**
