@@ -89,9 +89,7 @@ function htmlToText(html: string): string {
     selectors: [
       { selector: 'a', options: { ignoreHref: true } },
       { selector: 'img', format: 'skip' },
-      { selector: 'div.gmail_quote', format: 'skip' },
       { selector: 'div.gmail_signature', format: 'skip' },
-      { selector: 'div.gmail_extra', format: 'skip' },
       { selector: 'div#divRplyFwdMsg', format: 'skip' },
       { selector: 'div#appendonsend', format: 'skip' },
       { selector: 'div.yahoo_quoted', format: 'skip' },

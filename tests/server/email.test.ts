@@ -184,6 +184,18 @@ describe('extractReply', () => {
     const thunderbird = `<p>Thanks!</p><div class="moz-cite-prefix">On 10/26/26 3:00 PM, Margin Comments wrote:<br></div><blockquote type="cite" cite="mid:x@y">${n.html}</blockquote>`;
     expect(extractReply(null, thunderbird)).toBe('Thanks!');
   });
+  it('HTML-only Gmail replies keep answers written inside the quote wrapper', () => {
+    const bottom =
+      '<div class="gmail_quote"><div dir="ltr" class="gmail_attr">On Mon, Oct 26, 2026 at 3:00 PM Bob &lt;bob@example.com&gt; wrote:<br></div>' +
+      '<blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px #ccc solid;padding-left:1ex">Can we ship Friday?</blockquote><div>Yes, Friday works.</div></div>';
+    expect(extractReply(null, bottom)).toBe('Yes, Friday works.');
+    const inline =
+      '<div dir="ltr">Answers inline.</div><br><div class="gmail_quote"><div class="gmail_attr">On Mon, Bob wrote:<br></div>' +
+      '<blockquote class="gmail_quote">Can we ship Friday?</blockquote><div>Yes.</div><blockquote class="gmail_quote">Which region?</blockquote><div>London.</div></div>';
+    expect(extractReply(null, inline)).toBe('Answers inline.\n\nYes.\n\nLondon.');
+    const extra = '<div dir="ltr">Top.</div><div class="gmail_extra"><br><div class="gmail_quote">On Mon, Bob wrote:<blockquote class="gmail_quote">old</blockquote></div></div>';
+    expect(extractReply(null, extra)).toBe('Top.');
+  });
   it('returns empty for a quote-only reply', () => {
     expect(extractReply('\n\nOn Mon, Oct 26, 2026 Margin <x@y.z> wrote:\n> hi', null)).toBe('');
   });

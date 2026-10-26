@@ -291,3 +291,23 @@ test("a short quote in a component that starts with a <style> survives CSS chang
   expect(res.anchored).toBe('Hello there');
 });
 
+test('repeated slotted text in identical components re-anchors to its own component', async ({ page }) => {
+  await load(page, `<main><x-card id="c1"><span>Read more</span></x-card><x-card id="c2"><span>Read more</span></x-card></main>`);
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    for (const host of document.querySelectorAll('x-card')) {
+      host.attachShadow({ mode: 'open' }).innerHTML =
+        '<p>A component header that is repeated in every card.</p><slot></slot><p>The same footer in each component.</p>';
+    }
+    const t = document.querySelector('#c2 span')!.firstChild as Text;
+    const r = document.createRange();
+    r.selectNodeContents(t);
+    const { selectors } = mc.describeRange(document.body, r);
+    // (Quote alone is ambiguous here: both copies have the same 32 characters
+    // of context. The position, now in rendered-text terms, decides.)
+    const out = mc.anchorSelectors(document.body, selectors);
+    return out && (out.range.startContainer.parentElement!.closest('x-card') as HTMLElement).id;
+  });
+  expect(res).toBe('c2');
+});
+

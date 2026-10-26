@@ -320,21 +320,38 @@ export function describeRange(root: Element, range: Range): Description | null {
   } catch {
     return null;
   }
-  const selectors = inShadow ? describeInShadow(root, trimmed) : hypothesisDescribe(root, trimmed);
+  let selectors: Selector[] | null;
+  if (inShadow) {
+    selectors = describeWithIndex(new TextIndex(root), trimmed);
+  } else if (!hasOpenShadowRoot(root)) {
+    selectors = hypothesisDescribe(root, trimmed);
+  } else {
+    // A page with web components: its rendered text (which matching uses)
+    // differs from the light DOM's, so position and context come from our
+    // index too; the light-DOM XPath stays as a hint.
+    const own = describeWithIndex(new TextIndex(root), trimmed);
+    const hyp = hypothesisDescribe(root, trimmed);
+    selectors = own ? [...hyp.filter(s => s.type === 'RangeSelector'), ...own] : hyp;
+  }
   if (!selectors) return null;
   const quoteSel = selectors.find((s): s is TextQuoteSelector => s.type === 'TextQuoteSelector');
   if (!quoteSel || !stripWs(quoteSel.exact)) return null;
   return { selectors, quote: collapseWs(quoteSel.exact), range: trimmed };
 }
 
+/** Any open shadow root (a web component's) under `root`? */
+function hasOpenShadowRoot(root: Element): boolean {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+  for (let el = walker.nextNode() as Element | null; el; el = walker.nextNode() as Element | null) if (el.shadowRoot) return true;
+  return false;
+}
+
 /**
- * Selectors for a range inside a web component (an open shadow root), where
- * Hypothesis's light-DOM describe can't reach: position and quote come from
- * the page's rendered text (our index); no RangeSelector (XPath can't cross a
- * shadow boundary).
+ * Position and quote selectors from the page's rendered text (our index), for
+ * text inside web components (where Hypothesis's light-DOM describe can't
+ * reach, and XPath can't cross a shadow boundary) and on pages that have them.
  */
-function describeInShadow(root: Element, range: Range): Selector[] | null {
-  const index = new TextIndex(root);
+function describeWithIndex(index: TextIndex, range: Range): Selector[] | null {
   const start = index.rawOffsetOf(range.startContainer, range.startOffset);
   const end = index.rawOffsetOf(range.endContainer, range.endOffset);
   if (start === null || end === null || end <= start) return null;

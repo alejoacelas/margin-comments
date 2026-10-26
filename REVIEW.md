@@ -269,3 +269,12 @@ Reviewer C found nothing material.
 | A2 | Quote context for text inside a component included its `<style>` text (absent from matching), so short quotes orphaned after CSS changes | Fixed | Context for shadow selections comes from rendered text, as matching sees it. Anchoring regression "a short quote in a component that starts with a <style> survives CSS changes" |
 | B1 | Round 18's HTML cut at Apple Mail's `<blockquote type="cite">` dropped answers written below or between quotes in HTML-only replies | Fixed | Only Outlook's unbounded history is cut; blockquotes become `> ` lines so the text rules (inline answers) apply; nested HTML documents are unwrapped first (they made the converter lift quoted content out of the quote). `email.test.ts` "HTML-only Apple Mail / Thunderbird replies…" (bottom-posted, inline, top-posted over our notification, Thunderbird); verified to fail without the fix |
 
+## Round 20 — full repository (2026-10-26)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | On pages with web components, light-DOM selections (e.g. slotted text) got light-DOM positions and context while matching uses the rendered text, so a repeated slotted quote could re-anchor in another component | Fixed | On pages with open shadow roots, position and context come from the rendered-text index for every selection (XPath kept as a hint); pages without components are unchanged (corpus unchanged). Anchoring regression "repeated slotted text in identical components…"; verified to fail without the fix |
+| B1 | HTML-only Gmail replies: skipping the whole `gmail_quote` / `gmail_extra` wrapper dropped answers written inside it | Fixed | The wrappers are rendered; their blockquotes become `> ` lines and the "On … wrote:" line is handled by the text rules. `email.test.ts` "HTML-only Gmail replies keep answers…"; verified to fail without the fix |
+
