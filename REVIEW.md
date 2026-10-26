@@ -312,3 +312,7 @@ Reviewer C found nothing material.
 | B1 | **HTML reply pre-processing (history markers, document unwrapping) used whole-document regexes that were quadratic on malformed HTML (`'<div '.repeat(16000)`: 11 s on the event loop)** | Fixed | One linear pass over the tags; markers are tested per tag (bounded). `email.test.ts` "malformed HTML is processed in linear time"; verified to fail without the fix |
 | B2 | **`bareAddress` peeled nested comments one level per pass: a deeply nested From header blocked for 3 s before sender checks** | Fixed | Single-pass parsing of quoted strings and nested comments; headers over 2000 characters are refused. `email.test.ts` "handles deeply nested comments in linear time…"; verified to fail without the fix |
 
+Found while auditing the rest of the email path for the same class of bug (not reported by the
+reviewers): the final cleanup `/[ \t]+$/gm` took 38 s on 100,000 spaces followed by a letter.
+Trailing whitespace is now trimmed with a loop; the linear-time test covers it.
+

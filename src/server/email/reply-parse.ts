@@ -19,7 +19,14 @@ export function extractReply(text: string | null, html: string | null): string {
   let visible = cutSignatureDelimiter(body);
   visible = stripSignatureLines(visible);
   visible = stripSignOff(visible);
-  return visible.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+  return visible.split('\n').map(trimLineEnd).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Trailing spaces and tabs off a line, in a loop: `/[ \t]+$/` backtracks quadratically on long runs of spaces. */
+function trimLineEnd(line: string): string {
+  let end = line.length;
+  while (end > 0 && (line[end - 1] === ' ' || line[end - 1] === '\t')) end--;
+  return line.slice(0, end);
 }
 
 /** RFC 3676: a line of exactly "-- " (or "--") starts the signature. */
@@ -39,7 +46,7 @@ const SIGN_OFF = /^(best|best wishes|best regards|kind regards|warm regards|rega
  * removes the whole message.
  */
 function stripSignOff(text: string): string {
-  const lines = text.replace(/\s+$/, '').split('\n');
+  const lines = text.trimEnd().split('\n');
   for (let i = lines.length - 1; i >= Math.max(1, lines.length - 4); i--) {
     if (!SIGN_OFF.test(lines[i].trim())) continue;
     const after = lines.slice(i + 1).filter(l => l.trim());

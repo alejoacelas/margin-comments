@@ -214,7 +214,7 @@ describe('extractReply', () => {
     expect(extractReply(null, '<p>At <a href="https://example.com/x">https://example.com/x</a></p>')).toBe('At https://example.com/x');
   });
   it('parses hostile and long input in linear time', () => {
-    for (const input of ['2026'.repeat(16000), '2026'.repeat(64000), 'a-'.repeat(50000), '>'.repeat(100000), ('On x wrote:\n' + '> q\n').repeat(5000)]) {
+    for (const input of ['2026'.repeat(16000), '2026'.repeat(64000), 'a-'.repeat(50000), '>'.repeat(100000), ('On x wrote:\n' + '> q\n').repeat(5000), ' '.repeat(150000) + 'x', '\t'.repeat(150000) + 'x\n', ('a' + ' '.repeat(1000) + 'b\n').repeat(100), '_'.repeat(100000) + 'x', 'Thanks,\n'.repeat(20000)]) {
       const t0 = performance.now();
       extractReply(input, null);
       extractReply(null, `<p>${input}</p>`);
