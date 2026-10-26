@@ -124,6 +124,8 @@ export type Description = {
   selectors: Selector[];
   /** Human-readable quote (whitespace collapsed). */
   quote: string;
+  /** The selection trimmed of surrounding whitespace. */
+  range: Range;
 };
 
 /**
@@ -142,7 +144,7 @@ export function describeRange(root: Element, range: Range): Description | null {
   const selectors = hypothesisDescribe(root, trimmed);
   const quoteSel = selectors.find((s): s is TextQuoteSelector => s.type === 'TextQuoteSelector');
   if (!quoteSel || !stripWs(quoteSel.exact)) return null;
-  return { selectors, quote: collapseWs(quoteSel.exact) };
+  return { selectors, quote: collapseWs(quoteSel.exact), range: trimmed };
 }
 
 // ---------------------------------------------------------------------------
