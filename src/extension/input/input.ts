@@ -11,15 +11,25 @@
 import type { InputCommand, InputEventType, InputInit } from '../messages';
 
 const sid = location.hash.slice(1);
-let port = connect();
 let field: HTMLTextAreaElement | HTMLInputElement | null = null;
 let lastHeight = 0;
+/** Attached to the content script (we got `init` on the current port). */
+let attached = false;
+/** Enter/Escape pressed while the worker was restarting; sent once re-attached. */
+let held: { t: 'event'; type: InputEventType; value: string }[] = [];
+let port = connect();
 
 function send(msg: { t: 'event'; type: InputEventType; value: string }) {
+  if (!attached) {
+    // Typing is resent as the field's whole value on re-attach; keys aren't.
+    if (msg.type === 'submit' || msg.type === 'escape') held.push(msg);
+    return;
+  }
   try {
     port.postMessage({ ...msg, sid });
   } catch {
-    // the worker restarted; the content script re-opens the field
+    attached = false;
+    if (msg.type === 'submit' || msg.type === 'escape') held.push(msg);
   }
 }
 
@@ -102,11 +112,20 @@ function run(cmd: InputCommand) {
 function connect(): chrome.runtime.Port {
   const p = chrome.runtime.connect({ name: 'mc-input' });
   p.onMessage.addListener((msg: { t: 'init'; init: InputInit } | { t: 'cmd'; cmd: InputCommand }) => {
-    if (msg.t === 'init' && !field) build(msg.init);
-    else if (msg.t === 'cmd') run(msg.cmd);
+    if (msg.t === 'init') {
+      attached = true;
+      if (!field) build(msg.init);
+      else {
+        // Re-attached after the worker restarted: the field is the source of
+        // truth for what was typed meanwhile.
+        send({ t: 'event', type: 'input', value: field.value });
+        for (const m of held.splice(0)) send({ ...m, value: field.value });
+      }
+    } else if (msg.t === 'cmd') run(msg.cmd);
   });
   p.onDisconnect.addListener(() => {
     void chrome.runtime.lastError;
+    attached = false;
     setTimeout(() => {
       try {
         port = connect();

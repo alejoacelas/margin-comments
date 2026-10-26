@@ -140,3 +140,36 @@ test('the service worker restarting loses nothing', async ({ alice }) => {
     'After the restart',
   ]);
 });
+
+test('typing while the service worker restarts is kept, and Enter sends what the field shows', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Threads with email replies', 'Thread');
+  const card = a.locator('[data-testid=thread-card]');
+  const box = card.frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]');
+  await box.fill('secret draft');
+  await a.waitForTimeout(700);
+  // Kill the worker and keep typing while it's gone.
+  await alice.sw.evaluate(() => ((globalThis as any).__marker = 1));
+  const session = await alice.context.newCDPSession(a);
+  const { targetInfos } = await session.send('Target.getTargets');
+  const target = targetInfos.find(t => t.type === 'service_worker' && t.url.endsWith('/background.js'))!;
+  await session.send('Target.closeTarget', { targetId: target.targetId });
+  await box.press('End');
+  await box.pressSequentially(' with its ending');
+  await expect
+    .poll(async () => {
+      const w = alice.context.serviceWorkers().find(x => x.url().endsWith('/background.js'));
+      return w ? await w.evaluate(() => (globalThis as any).__marker ?? 'fresh').catch(() => 'gone') : 'none';
+    })
+    .toBe('fresh');
+  await a.waitForTimeout(1000);
+  await box.press('Enter');
+  await expect(card.locator('[data-testid=comment-body]')).toHaveText(['Thread', 'secret draft with its ending']);
+  await expect(box).toHaveValue('');
+  // Nothing is left behind as a draft.
+  await a.reload();
+  await alice.openSidebar(a);
+  await expect(a.locator('[data-testid=draft-row]')).toHaveCount(0);
+});

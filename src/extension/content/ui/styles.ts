@@ -7,6 +7,8 @@
 export const CSS_TEXT = `
 :host {
   all: initial;
+  -webkit-user-select: none;
+  user-select: none;
   --mc-font-ui: "MC Source Sans", "Source Sans 3", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --mc-font-comment: verdana, "MC Source Sans", sans-serif;
   --mc-font-quote: "MC Lora", Lora, Georgia, serif;
@@ -93,6 +95,10 @@ button:focus-visible, textarea:focus-visible, input:focus-visible, a:focus-visib
   font: 12px/1.38 var(--mc-font-comment); white-space: pre-wrap; overflow-wrap: anywhere;
   padding: 4px 6px; color: var(--mc-text);
 }
+/* Only public text (comments, quotes) can be selected: anything selectable can
+   be read by the page (window.find + selectAll). Private text: see Private(). */
+.c-body, .row-quote, .row-first, .resolved-note { -webkit-user-select: text; user-select: text; }
+.pv::before { content: attr(data-t); }
 .c-body a { color: var(--mc-send-active); text-decoration: underline; }
 .c-actions { display: flex; gap: 10px; padding: 0 6px 2px; height: 18px; opacity: 0; transition: opacity .1s; }
 .comment:hover .c-actions, .comment:focus-within .c-actions { opacity: 1; }

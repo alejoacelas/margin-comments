@@ -5,7 +5,7 @@ import type { Draft, Op } from '../../messages';
 import type { ViewComment, ViewThread } from '../store';
 import { isMine } from '../store';
 import type { Actions } from './actions';
-import { Icons, Linkified, newId, SecureField, timeAgo } from './util';
+import { Icons, Linkified, newId, Private, SecureField, timeAgo } from './util';
 
 function OpStatus({ op, text, actions }: { op?: Op; text?: string; actions: Actions }) {
   if (!op) return null;
@@ -48,8 +48,8 @@ function Editor(props: {
   const textRef = useRef(text);
   textRef.current = text;
 
-  const submit = async () => {
-    const body = textRef.current.trim();
+  const submit = async (value = textRef.current) => {
+    const body = value.trim();
     if (!body || busy) return;
     if (body.length > LIMITS.commentBody) {
       setError(`Too long (max ${LIMITS.commentBody.toLocaleString()} characters).`);
@@ -84,7 +84,8 @@ function Editor(props: {
           setText(v);
           props.actions.saveDraft(props.draftKey, v);
         }}
-        onSubmit={() => void submit()}
+        // The field's own value: what's on screen is what gets sent.
+        onSubmit={v => void submit(v)}
         onEscape={v => {
           if (props.onEscape) props.onEscape();
           else props.onCancel([props.initial, v]);
@@ -169,7 +170,7 @@ function CommentItem(props: {
         </div>
       ) : (
         <div class="c-body" data-testid="comment-body">
-          <Linkified text={comment.body} />
+          {comment.pending || comment.failedOp ? <Private text={comment.body} block /> : <Linkified text={comment.body} />}
         </div>
       )}
       {comment.failedOp ? (
@@ -179,7 +180,7 @@ function CommentItem(props: {
       ) : null}
       {confirming ? (
         <div class="confirm">
-          {isFirst ? 'Delete this comment and its whole thread?' : 'Delete this comment?'}
+          <Private text={isFirst ? 'Delete this comment and its whole thread?' : 'Delete this comment?'} />
           <div class="confirm-actions">
             <button class="link-btn muted" onClick={() => setConfirming(false)}>
               Cancel
@@ -192,17 +193,19 @@ function CommentItem(props: {
                 void actions.remove(thread, comment.id);
               }}
             >
-              Delete
+              <Private text="Delete" />
             </button>
           </div>
         </div>
       ) : own && !editing && !comment.failedOp ? (
+        // Only your own comments have these, so their labels are private:
+        // the page could otherwise find which comments are yours.
         <div class="c-actions">
-          <button class="link-btn" data-testid="edit" onClick={() => setEditing(true)}>
-            edit
+          <button class="link-btn" data-testid="edit" aria-label="Edit" onClick={() => setEditing(true)}>
+            <Private text="edit" />
           </button>
-          <button class="link-btn" data-testid="delete" onClick={() => setConfirming(true)}>
-            delete
+          <button class="link-btn" data-testid="delete" aria-label="Delete" onClick={() => setConfirming(true)}>
+            <Private text="delete" />
           </button>
         </div>
       ) : null}

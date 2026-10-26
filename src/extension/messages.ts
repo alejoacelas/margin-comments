@@ -63,7 +63,8 @@ export type InputPortMessage = { t: 'hello'; sid: string } | { t: 'event'; sid: 
 export type RpcMethods = {
   startEmail: { params: { email: string }; result: { requestId: string; emailMode: string } };
   verifyCode: { params: { requestId: string; code: string }; result: { user: Me } };
-  consumeLink: { params: { token: string }; result: { user: Me } };
+  /** Without `confirm`, a link this browser didn't ask for returns `confirm` instead of signing in. */
+  consumeLink: { params: { token: string; confirm?: boolean }; result: { user: Me } | { confirm: { email: string; current: string | null } } };
   googleSignIn: { params: Record<string, never>; result: { user: Me } };
   signOut: { params: Record<string, never>; result: { ok: true } };
   updateMe: { params: { name?: string; notifyEmail?: boolean }; result: { user: Me } };

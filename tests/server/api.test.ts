@@ -35,15 +35,33 @@ describe('email sign-in', () => {
   });
 
   it('link tokens are single-use', async () => {
-    await t.app.inject({ method: 'POST', url: '/api/auth/email/start', payload: { email: 'carol@example.com' } });
+    const { requestId } = (await t.app.inject({ method: 'POST', url: '/api/auth/email/start', payload: { email: 'carol@example.com' } })).json();
     await t.queue.tick();
     const mail = t.provider.to('carol@example.com')[0];
     const token = /#token=([\w-]+)/.exec(mail.text)![1];
     expect(mail.text).toContain('https://mc.test/auth/verify#token=');
-    const ok = await t.app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token } });
+    const ok = await t.app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token, requestIds: [requestId] } });
     expect(ok.statusCode).toBe(200);
-    const again = await t.app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token } });
+    expect(ok.json().token).toBeTruthy();
+    const again = await t.app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token, requestIds: [requestId] } });
     expect(again.statusCode).toBe(400);
+  });
+
+  it("a link opened by a browser that didn't request it asks first and stays usable", async () => {
+    // Login CSRF: someone requests a link for their own address and gets
+    // another person's browser to open it.
+    const { requestId } = (await t.app.inject({ method: 'POST', url: '/api/auth/email/start', payload: { email: 'mallory@example.com' } })).json();
+    await t.queue.tick();
+    const token = /#token=([\w-]+)/.exec(t.provider.to('mallory@example.com')[0].text)![1];
+    for (const requestIds of [undefined, [], ['someone-elses-request']]) {
+      const r = await t.app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token, requestIds } });
+      expect(r.statusCode).toBe(200);
+      expect(r.json()).toEqual({ confirm: { email: 'mallory@example.com' } });
+    }
+    // Not used up: the requester (or a confirmed click) can still sign in with it.
+    const confirmed = await t.app.inject({ method: 'POST', url: '/api/auth/email/verify', payload: { token, confirm: true } });
+    expect(confirmed.json().user.email).toBe('mallory@example.com');
+    expect(requestId).toBeTruthy();
   });
 
   it('rate-limits sign-in emails per address', async () => {

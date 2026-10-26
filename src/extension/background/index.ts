@@ -343,15 +343,32 @@ type Handler<M extends RpcMethod> = (params: RpcMethods[M]['params'], info: Port
 
 const handlers: { [M in RpcMethod]: Handler<M> } = {
   async startEmail({ email }) {
-    return api('POST', '/api/auth/email/start', { body: { email } });
+    const r = await api<{ requestId: string; emailMode: string }>('POST', '/api/auth/email/start', { body: { email } });
+    // Remember sign-ins started here: only their emailed links sign in without asking.
+    const { pendingLogins = [] } = (await chrome.storage.local.get('pendingLogins')) as { pendingLogins?: { id: string; at: number }[] };
+    const fresh = pendingLogins.filter(p => Date.now() - p.at < 30 * 60_000).slice(-9);
+    await chrome.storage.local.set({ pendingLogins: [...fresh, { id: r.requestId, at: Date.now() }] });
+    return r;
   },
   async verifyCode({ requestId, code }) {
     const r = await api<{ token: string; user: Me }>('POST', '/api/auth/email/verify', { body: { requestId, code } });
+    await chrome.storage.local.set({ pendingLogins: [] });
     await signIn(r.token, r.user);
     return { user: r.user };
   },
-  async consumeLink({ token }) {
-    const r = await api<{ token: string; user: Me }>('POST', '/api/auth/email/verify', { body: { token } });
+  async consumeLink({ token, confirm }) {
+    const { pendingLogins = [] } = (await chrome.storage.local.get('pendingLogins')) as { pendingLogins?: { id: string; at: number }[] };
+    const requestIds = pendingLogins.map(p => p.id);
+    type Verified = { token: string; user: Me } | { confirm: { email: string } };
+    let r = await api<Verified>('POST', '/api/auth/email/verify', { body: { token, requestIds, confirm: !!confirm } });
+    if ('confirm' in r) {
+      // A link for the account that's already signed in changes nothing: use it.
+      if (session && r.confirm.email === session.user.email) {
+        r = await api<Verified>('POST', '/api/auth/email/verify', { body: { token, requestIds, confirm: true } });
+      }
+      if ('confirm' in r) return { confirm: { email: r.confirm.email, current: session?.user.email ?? null } };
+    }
+    await chrome.storage.local.set({ pendingLogins: [] });
     await signIn(r.token, r.user);
     return { user: r.user };
   },

@@ -492,6 +492,60 @@ test('the production build (closed shadow root) works with real mouse and keyboa
   }
 });
 
+test("in the production build the page can't find or select your email or drafts", async () => {
+  const user = await Person.launch('prod-private', `prod-private-${Date.now()}@example.com`, EXT_PATH_CLOSED);
+  try {
+    await user.signInHeadless();
+    const path = uniquePath('article');
+    const p = await user.open(path);
+    await expect.poll(() => p.evaluate(() => document.querySelector('margin-comments-root')?.shadowRoot === null)).toBe(true);
+    // Leave an unsent draft: chip, type, reload.
+    await selectText(p, 'Readers have always written in the margins');
+    const chip = await p.evaluate(() => {
+      const r = document.getSelection()!.getRangeAt(0).getBoundingClientRect();
+      return { x: r.right + 10 + 25, y: Math.max(4, r.top) + 10 };
+    });
+    await p.waitForTimeout(400);
+    await p.mouse.click(chip.x, chip.y);
+    await p.waitForTimeout(400);
+    await p.keyboard.type('Unsent private musings');
+    await p.waitForTimeout(800);
+    await p.reload();
+    await expect.poll(() => p.evaluate(() => !!document.querySelector('margin-comments-root'))).toBe(true);
+    // Open the sidebar: account (name, email) and the "Unsent drafts" list.
+    await user.clickToolbar(p);
+    await expect.poll(() => p.evaluate(() => { getSelection()!.removeAllRanges(); return (window as any).find('Unsent drafts'); })).toBe(true);
+    const probe = await p.evaluate(email => {
+      const find = (q: string) => {
+        getSelection()!.removeAllRanges();
+        return (window as any).find(q);
+      };
+      const r = {
+        email: find(email),
+        emailUser: find(email.split('@')[0]),
+        draft: find('Unsent private musings'),
+        draftWord: find('musings'),
+        all: '',
+      };
+      // Bulk read: put the selection in our UI, then select all.
+      getSelection()!.removeAllRanges();
+      (window as any).find('Unsent drafts');
+      document.execCommand('selectAll');
+      r.all = getSelection()!.toString();
+      return r;
+    }, user.email);
+    expect(probe.email).toBe(false);
+    expect(probe.emailUser).toBe(false);
+    expect(probe.draft).toBe(false);
+    expect(probe.draftWord).toBe(false);
+    expect(probe.all).not.toContain('musings');
+    expect(probe.all).not.toContain(user.email);
+    expect(user.errors).toEqual([]);
+  } finally {
+    await user.close();
+  }
+});
+
 test("a click on a card's blank area isn't taken over by clipped highlighted text inside it", async ({ alice }) => {
   const path = uniquePath('clip');
   const a = await alice.open(path);
@@ -510,6 +564,33 @@ test("a click on a card's blank area isn't taken over by clipped highlighted tex
   await a.mouse.click(at.x, at.y);
   await expect(a).toHaveURL(/#card-opened$/);
   await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+});
+
+test('a click on blank space beside a highlighted paragraph goes to the page, not the thread', async ({ alice }) => {
+  const path = uniquePath('clip');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await selectBetween(a, 'Opening line of the wide', 'Closing line');
+  await a.locator('[data-testid=adder]').click();
+  const input = a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+  await input.fill('Across three paragraphs');
+  await input.press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Across three paragraphs']);
+  await a.keyboard.press('Escape');
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+  // Far right of the short middle line: inside the highlight's (full-width)
+  // rect for that paragraph, but no text there.
+  const at = await a.evaluate(() => {
+    const p = document.querySelectorAll('#card2 p')[1];
+    const r = p.getBoundingClientRect();
+    return { x: r.right - 20, y: r.top + r.height / 2 };
+  });
+  await a.mouse.click(at.x, at.y);
+  await expect(a).toHaveURL(/#card2-opened$/);
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+  // Clicking the highlighted text itself still opens the thread.
+  await a.mouse.click(...(Object.values(await textCenter(a, 'Middle.')) as [number, number]));
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(1);
 });
 
 test('following a thread link on the page that is already open opens the thread', async ({ alice }) => {

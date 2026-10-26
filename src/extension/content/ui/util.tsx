@@ -66,6 +66,22 @@ export function Avatar({ name, own }: { name: string; own: boolean }) {
   );
 }
 
+declare const __OPEN_SHADOW__: boolean;
+const TEST_BUILD = typeof __OPEN_SHADOW__ !== 'undefined' && __OPEN_SHADOW__;
+
+/**
+ * Text the host page must not be able to read: your email and name, drafts,
+ * unsaved comments, and labels only your own comments have. A closed shadow
+ * root doesn't hide text from the page's `window.find()` and Selection API
+ * (find, then `selectAll`), so this is drawn as CSS generated content, which
+ * neither can see. Test builds (open shadow root, driven by Playwright) use a
+ * plain text node; the production-build e2e tests check the real thing.
+ */
+export function Private({ text, block }: { text: string; block?: boolean }) {
+  if (TEST_BUILD) return block ? <div class="pv-test">{text}</div> : <span class="pv-test">{text}</span>;
+  return block ? <div class="pv" data-t={text} /> : <span class="pv" data-t={text} />;
+}
+
 export const supportsPopover = typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype;
 
 /** A floating layer in the browser's top layer (popover API). */
@@ -205,12 +221,17 @@ function SecureFrame(props: Parameters<typeof SecureField>[0] & { onHijack: () =
       { kind: p.kind, value: p.value, placeholder: p.placeholder, label: p.label, rows: p.rows, maxLength: p.maxLength, testId: p.testId },
       (type, value) => {
         const cur = latest.current;
-        if (type === 'input') {
+        const changed = () => {
           fromFrame.current.push(value);
           if (fromFrame.current.length > 200) fromFrame.current.splice(0, 100);
           cur.onChange(value);
-        } else if (type === 'submit') cur.onSubmit?.(value);
-        else if (type === 'escape') cur.onEscape?.(value);
+        };
+        if (type === 'input') changed();
+        else if (type === 'submit') {
+          // Carries the field's value; make sure we have it (and its draft) first.
+          if (fromFrame.current[fromFrame.current.length - 1] !== value) changed();
+          cur.onSubmit?.(value);
+        } else if (type === 'escape') cur.onEscape?.(value);
         else if (type === 'height') setHeight(Math.max(20, Number(value) || 0));
         else if (type === 'ready') {
           if (cur.readOnly) cur.actions.fieldCommand(sid, { cmd: 'readonly', on: true });

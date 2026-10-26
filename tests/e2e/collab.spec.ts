@@ -168,3 +168,30 @@ test('signing in by opening the emailed link', async ({ alice }) => {
   const again = await alice.open(link);
   await expect(again.locator('#mc-verify')).toHaveAttribute('data-state', 'error');
 });
+
+test("someone else's sign-in link doesn't switch accounts without asking", async ({ alice }) => {
+  const path = uniquePath('article');
+  const page = await alice.open(path);
+  await alice.signIn(page);
+  // Mallory requests a link for her own address and gets Alice to open it.
+  const mallory = `mallory-${Date.now()}@example.com`;
+  const since = Date.now();
+  await fetch(`${API}/api/auth/email/start`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: mallory }) });
+  const mail = await waitForEmail(mallory, m => /sign-in code/.test(m.subject), since);
+  const link = /(http:\/\/localhost:\d+\/auth\/verify#token=[\w-]+)/.exec(mail.text)![1];
+  const verify = await alice.open(link);
+  await expect(verify.locator('#mc-verify')).toHaveAttribute('data-state', 'confirm');
+  await expect(verify.locator('#mc-verify-title')).toContainText(mallory);
+  await expect(verify.locator('#mc-verify-message')).toContainText(alice.email);
+  const signedInAs = () => alice.sw.evaluate(async () => ((await chrome.storage.local.get('session')).session as { user: { email: string } } | undefined)?.user.email);
+  expect(await signedInAs()).toBe(alice.email);
+  // A script click isn't a confirmation.
+  await verify.evaluate(() => (document.getElementById('mc-verify-confirm') as HTMLButtonElement).click());
+  await verify.waitForTimeout(500);
+  expect(await signedInAs()).toBe(alice.email);
+  await expect(verify.locator('#mc-verify')).toHaveAttribute('data-state', 'confirm');
+  // Only a real click on the confirmation switches.
+  await verify.locator('#mc-verify-confirm').click();
+  await expect(verify.locator('#mc-verify')).toHaveAttribute('data-state', 'done');
+  expect(await signedInAs()).toBe(mallory);
+});

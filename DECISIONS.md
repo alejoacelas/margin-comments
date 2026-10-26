@@ -31,6 +31,12 @@ Choices made while building this without supervision, with the reasoning.
   upgraded if the exact text appears later. Orphans always stay listed in the sidebar.
 - **Very long quotes** (> 1000 chars without an exact match) are matched by head and tail to
   bound the cost.
+- **Exact text elsewhere vs. the edited passage:** Hypothesis takes any exact occurrence over a
+  near match. When the only exact copy sits in mostly different surroundings (context < 50%) and
+  a near match (≥ 85% of the quote, ≥ 20 chars) sits in the original surroundings (≥ 95% both
+  sides), the thread stays on its own, lightly edited passage instead of jumping to the copy.
+  The bar is high on purpose: a renamed item in a list of similar items (`setEndAfter` →
+  `setEndBefore`) is a different item, and there the exact text wins (corpus unchanged).
 
 ## Highlights and UI isolation
 
@@ -60,6 +66,18 @@ Choices made while building this without supervision, with the reasoning.
   The parent never pushes back a value the frame itself reported (renders can lag a keystroke);
   a frame that loads twice (the page navigated it) is replaced with a fresh session. Page CSPs
   don't apply to extension frames (tested under `frame-src 'none'`).
+- **Private text is drawn as CSS generated content**: your email and name, drafts, unsaved
+  comments, and labels only your own comments have (edit/delete). A closed shadow root doesn't
+  hide text from the page's `window.find()`, which also works as an oracle (true/false) that can
+  rebuild text a character at a time, nor from `find` + `execCommand('selectAll')`; generated
+  content (`content: attr(data-t)`) is invisible to both. The rest of the UI is
+  `user-select: none`, except public text (comments, quotes). Test builds render plain text so
+  Playwright can read it; production-build e2e tests check that the page finds nothing.
+- **Accepted limitation: your threads' highlight color.** The CSS Custom Highlight registry and
+  highlight colors (`getComputedStyle(el, '::highlight(x)')`) are readable by the page, so a page
+  can tell which passages are highlighted as yours (yellow, Curius's look) and, by signing up
+  itself, narrow down who you are among those threads' participants. Hiding it means giving up
+  the yellow; we kept it.
 - **Popover top layer** for the adder, cards, sidebar and launcher, so no page z-index or
   transform can cover or displace them.
 - **Event shield** (`early.ts`, at `document_start`): key, pointer, focus, clipboard and input
@@ -98,7 +116,11 @@ Choices made while building this without supervision, with the reasoning.
 - **Email code + magic link** in one email. The code works on any device; the link signs in the
   Chrome where the extension is installed (our content script picks the one-time token out of the
   verify page's fragment, so the server page has no scripts). Codes: 6 digits, 5 attempts, 20
-  minutes, HMAC-hashed; link tokens SHA-256 hashed, single use. Sessions: random bearer tokens
+  minutes, HMAC-hashed; link tokens SHA-256 hashed, single use. A link signs in automatically
+  only in the browser that asked for it (the worker remembers its sign-in request ids, and the
+  server consumes the token only for a matching id) or for the account already signed in;
+  otherwise the page asks "Sign in as …?" and needs a real click, so someone can't send you their
+  link and have your comments go to their account (login CSRF). Sessions: random bearer tokens
   stored hashed, 180-day sliding expiry.
 - **Google sign-in only for addresses Google is authoritative for**: Gmail, or a Workspace
   account whose `hd` claim matches the domain. For other addresses Google's `email_verified` only

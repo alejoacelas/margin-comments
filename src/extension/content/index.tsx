@@ -251,16 +251,42 @@ class MarginComments implements Actions {
     const title = document.getElementById('mc-verify-title');
     const message = document.getElementById('mc-verify-message');
     const box = document.getElementById('mc-verify');
-    try {
-      const { user } = await this.port.call('consumeLink', { token });
-      if (title) title.textContent = "You're signed in";
-      if (message) message.textContent = `Signed in as ${user.email}. You can close this tab and go back to the page you were reading.`;
-      box?.setAttribute('data-state', 'done');
-    } catch (err) {
-      if (title) title.textContent = "That link didn't work";
-      if (message) message.textContent = `${(err as Error).message} Request a new link from the extension.`;
-      box?.setAttribute('data-state', 'error');
-    }
+    const button = document.getElementById('mc-verify-confirm') as HTMLButtonElement | null;
+    const consume = async (confirm: boolean) => {
+      try {
+        const r = await this.port.call('consumeLink', { token, confirm });
+        if ('confirm' in r) {
+          // A link this browser didn't ask for (someone may have sent it to
+          // sign you into their account): only with an explicit click.
+          const { email, current } = r.confirm;
+          if (title) title.textContent = `Sign in as ${email}?`;
+          if (message) {
+            message.textContent = current
+              ? `You're signed in to Margin Comments as ${current}. This link would sign this browser in as ${email} instead. Only continue if you asked for this link.`
+              : `This link signs Margin Comments in this browser in as ${email}. Only continue if you asked for this link.`;
+          }
+          if (button) {
+            button.textContent = `Sign in as ${email}`;
+            button.hidden = false;
+            button.onclick = e => {
+              if (!e.isTrusted) return;
+              button.hidden = true;
+              void consume(true);
+            };
+          }
+          box?.setAttribute('data-state', 'confirm');
+          return;
+        }
+        if (title) title.textContent = "You're signed in";
+        if (message) message.textContent = `Signed in as ${r.user.email}. You can close this tab and go back to the page you were reading.`;
+        box?.setAttribute('data-state', 'done');
+      } catch (err) {
+        if (title) title.textContent = "That link didn't work";
+        if (message) message.textContent = `${(err as Error).message} Request a new link from the extension.`;
+        box?.setAttribute('data-state', 'error');
+      }
+    };
+    await consume(false);
   }
 
   // -------------------------------------------------------------------------

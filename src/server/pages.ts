@@ -39,6 +39,7 @@ export function verifyPage(): string {
 <h1 id="mc-verify-title">Signing you in…</h1>
 <p id="mc-verify-message">If Margin Comments is installed in this Chrome, you'll be signed in automatically in a moment.
 Otherwise, type the 6-digit code from the email into the extension.</p>
+<p><button id="mc-verify-confirm" type="button" hidden>Sign in</button></p>
 </div>`,
   );
 }

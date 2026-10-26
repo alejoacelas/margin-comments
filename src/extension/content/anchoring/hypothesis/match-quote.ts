@@ -29,7 +29,7 @@ type Match = {
  * Find the best approximate matches for `str` in `text` allowing up to
  * `maxErrors` errors.
  */
-function search(text: string, str: string, maxErrors: number): StringMatch[] {
+function search(text: string, str: string, maxErrors: number, alsoFuzzy = false): StringMatch[] {
   // Do a fast search for exact matches. The `approx-string-match` library
   // doesn't currently incorporate this optimization itself.
   let matchPos = 0;
@@ -45,8 +45,23 @@ function search(text: string, str: string, maxErrors: number): StringMatch[] {
       matchPos += 1;
     }
   }
-  if (exactMatches.length > 0) {
+  if (exactMatches.length > 0 && !alsoFuzzy) {
     return exactMatches;
+  }
+  // margin-comments: optionally also consider the best near match when exact
+  // ones exist (an exact repeat elsewhere vs. the edited passage itself).
+  // approx-string-match keeps only the closest matches, so the exact
+  // occurrences are masked out (same length: offsets don't move) first.
+  if (exactMatches.length > 0) {
+    let masked = '';
+    let at = 0;
+    for (const m of exactMatches) {
+      if (m.start < at) continue;
+      masked += text.slice(at, m.start) + '\u0000'.repeat(m.end - m.start);
+      at = m.end;
+    }
+    masked += text.slice(at);
+    return [...exactMatches, ...approxSearch(masked, str, maxErrors)];
   }
 
   // If there are no exact matches, do a more expensive search for matches
@@ -105,6 +120,7 @@ export function matchQuoteCandidates(
   text: string,
   quote: string,
   context: Context = {},
+  alsoFuzzy = false,
 ): Match[] {
   if (quote.length === 0) {
     return [];
@@ -122,7 +138,7 @@ export function matchQuoteCandidates(
   const maxErrors = Math.min(256, quote.length / 2);
 
   // Find the closest matches for `quote` in `text` based on edit distance.
-  const matches = search(text, quote, maxErrors);
+  const matches = search(text, quote, maxErrors, alsoFuzzy);
 
   if (matches.length === 0) {
     return [];

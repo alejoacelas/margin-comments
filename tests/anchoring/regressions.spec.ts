@@ -138,3 +138,50 @@ test('real viewport resizes move the highlight between responsive copies, both w
   await page.setViewportSize({ width: 1100, height: 800 });
   await expect.poll(where, { timeout: 10_000 }).toBe('d');
 });
+
+test('an edited repeat stays on its own passage instead of jumping to the unchanged copy', async ({ page }) => {
+  await load(
+    page,
+    `<main><h2>Section A</h2><p id="a">Opening for the first part. The quick brown fox jumps over the lazy dog. First part closes here.</p>
+     <h2>Section B</h2><p id="b">Another start in part two. The quick brown fox jumps over the lazy dog. Part two ends with this.</p></main>`,
+  );
+  const where = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const t = document.getElementById('b')!.firstChild as Text;
+    const q = 'The quick brown fox jumps over the lazy dog.';
+    const i = t.data.indexOf(q);
+    const r = document.createRange();
+    r.setStart(t, i);
+    r.setEnd(t, i + q.length);
+    const { selectors } = mc.describeRange(document.body, r);
+    // B's copy is edited; A's stays identical.
+    t.data = t.data.replace('quick', 'swift');
+    const res = mc.anchorSelectors(document.body, selectors);
+    return res ? { id: (res.range.startContainer.parentElement as HTMLElement).id, text: res.range.toString() } : null;
+  });
+  expect(where).toEqual({ id: 'b', text: 'The swift brown fox jumps over the lazy dog.' });
+});
+
+test('an unchanged repeat with the right context still anchors exactly', async ({ page }) => {
+  await load(
+    page,
+    `<main><p id="a">Opening for the first part. The quick brown fox jumps over the lazy dog. First part closes here.</p>
+     <p id="b">Another start in part two. The quick brown fox jumps over the lazy dog. Part two ends with this.</p></main>`,
+  );
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const t = document.getElementById('a')!.firstChild as Text;
+    const q = 'The quick brown fox jumps over the lazy dog.';
+    const i = t.data.indexOf(q);
+    const r = document.createRange();
+    r.setStart(t, i);
+    r.setEnd(t, i + q.length);
+    const { selectors } = mc.describeRange(document.body, r);
+    // B's copy is edited; the thread on A must stay on A, exactly.
+    const b = document.getElementById('b')!.firstChild as Text;
+    b.data = b.data.replace('quick', 'swift');
+    const out = mc.anchorSelectors(document.body, selectors);
+    return out ? { id: (out.range.startContainer.parentElement as HTMLElement).id, method: out.method } : null;
+  });
+  expect(res?.id).toBe('a');
+});

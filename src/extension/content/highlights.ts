@@ -151,18 +151,37 @@ function luminance([r, g, b]: number[]): number {
 }
 
 /**
- * Is a character of `range` actually painted at (x, y)? The caret position
- * under the pointer must fall in the range's text, and no clipping ancestor
- * (overflow other than visible) may cut that point off.
+ * Is a character of `range` actually painted at (x, y)? The character next to
+ * the caret position under the pointer must be in the range and its box must
+ * contain the point (browsers report the nearest caret even over blank space,
+ * and a range's rects include full-width boxes for wholly covered blocks), and
+ * no clipping ancestor (overflow other than visible) may cut that point off.
  */
 export function textShownAt(range: Range, x: number, y: number): boolean {
   const doc = document as Document & {
     caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
   };
   let node: Node | null = null;
-  if (typeof doc.caretPositionFromPoint === 'function') node = doc.caretPositionFromPoint(x, y)?.offsetNode ?? null;
-  else node = document.caretRangeFromPoint?.(x, y)?.startContainer ?? null;
+  let offset = 0;
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const pos = doc.caretPositionFromPoint(x, y);
+    node = pos?.offsetNode ?? null;
+    offset = pos?.offset ?? 0;
+  } else {
+    const r = document.caretRangeFromPoint?.(x, y);
+    node = r?.startContainer ?? null;
+    offset = r?.startOffset ?? 0;
+  }
   if (!node || node.nodeType !== Node.TEXT_NODE || !range.intersectsNode(node)) return false;
+  const text = node as Text;
+  const onChar = [offset - 1, offset].some(i => {
+    if (i < 0 || i >= text.length || !range.isPointInRange(text, i) || !range.isPointInRange(text, i + 1)) return false;
+    const ch = document.createRange();
+    ch.setStart(text, i);
+    ch.setEnd(text, i + 1);
+    return Array.from(ch.getClientRects()).some(r => x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1);
+  });
+  if (!onChar) return false;
   for (let el = node.parentElement; el && el !== document.documentElement; el = el.parentElement) {
     const cs = getComputedStyle(el);
     if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {

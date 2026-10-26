@@ -173,3 +173,18 @@ Reviewer B found nothing material.
 Found while moving fields into frames (with tests): a field rendered where another had been
 (sign-in email → code) reused the iframe with only a new `#hash`, which doesn't reload it; and a
 render lagging a keystroke pushed the older value back into the field, dropping characters.
+
+## Round 11 — full repository (2026-10-26)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| B1 | **Login CSRF: opening someone else's unused magic link silently switched the extension to their account** | Fixed | Links are consumed automatically only for a sign-in this browser started (request id) or the account already signed in; otherwise the verify page asks, and only a trusted click confirms. `api.test.ts` "a link opened by a browser that didn't request it asks first…"; e2e "someone else's sign-in link doesn't switch accounts without asking" |
+| C1 | **The page could still read sidebar text (drafts, account email) with `window.find()` + `selectAll` in the closed shadow root** | Fixed | Private text is CSS generated content (invisible to `find`, which is also a true/false oracle, and to selection); the UI is `user-select: none` except public text. e2e (production build) "the page can't find or select your email or drafts", verified to fail without the fix |
+| C2 | Typing during a worker restart was dropped, and Enter then sent the stale text and deleted the draft | Fixed | The field resends its whole value when re-attached and holds Enter/Escape until then; submit uses the value the field reports. e2e "typing while the service worker restarts is kept…", verified to fail without the fix |
+| A1 | An edited repeated sentence re-anchored onto the unchanged copy elsewhere | Fixed | Near matches in the original surroundings beat an exact copy in different surroundings (strict thresholds; corpus unchanged). Anchoring regressions "an edited repeat stays on its own passage…" and "an unchanged repeat with the right context still anchors exactly" |
+| A2 | Clicks on blank space beside a fully highlighted short paragraph (e.g. in a linked card) opened the thread instead of following the link | Fixed | The pointer must be on a highlighted character's box (caret offset + character rects). e2e "a click on blank space beside a highlighted paragraph goes to the page…" |
+
+Also found while fixing C1 (not reported by the reviewers): the page can read the CSS highlight
+registry and highlight colors, so it can tell which highlights are yours. Kept as an accepted
+limitation (see DECISIONS.md).
+

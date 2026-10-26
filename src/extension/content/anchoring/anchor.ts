@@ -250,6 +250,17 @@ function matchQuoteInIndex(
     candidates = matchLongQuote(text, q, prefix, suffix, hint);
   } else {
     candidates = matchQuoteCandidates(text, q, { prefix, suffix, hint });
+    // An exact match whose surroundings don't fit may be a repeat of a
+    // passage that was edited where the thread was. The passage itself wins
+    // only when it is clearly still there: lightly edited text in the
+    // original surroundings, against an exact copy in mostly different
+    // surroundings. (A changed name in a list of similar items, say
+    // setEndAfter -> setEndBefore, is a different item: the exact text wins.)
+    const top = candidates[0];
+    if (top && top.quoteScore === 1 && (prefix || suffix) && q.length >= 20 && (top.prefixScore + top.suffixScore) / 2 < 0.5) {
+      const near = matchQuoteCandidates(text, q, { prefix, suffix, hint }, true).find(c => c.quoteScore < 1);
+      if (near && near.quoteScore >= 0.85 && near.prefixScore >= 0.95 && near.suffixScore >= 0.95) candidates = [near, ...candidates];
+    }
   }
   if (candidates.length === 0) return null;
 

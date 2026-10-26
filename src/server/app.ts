@@ -100,7 +100,12 @@ const resolveSchema = z.object({ resolved: z.boolean() });
 const emailStartSchema = z.object({ email: z.string().max(LIMITS.email) });
 const emailVerifySchema = z.union([
   z.object({ requestId: z.string().min(1).max(100), code: z.string().min(1).max(20) }),
-  z.object({ token: z.string().min(1).max(200) }),
+  z.object({
+    token: z.string().min(1).max(200),
+    // Sign-ins this browser started; a link from any other needs `confirm`.
+    requestIds: z.array(z.string().max(100)).max(10).optional(),
+    confirm: z.boolean().optional(),
+  }),
 ]);
 const mePatchSchema = z.object({ name: z.string().max(200).optional(), notifyEmail: z.boolean().optional() });
 
@@ -263,8 +268,9 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
     const input = parse(emailVerifySchema, req.body);
     const result =
       'token' in input
-        ? verifyEmailLink(db, input.token)
+        ? verifyEmailLink(db, input.token, { requestIds: input.requestIds ?? [], confirm: input.confirm === true })
         : verifyEmailCode(db, config.appSecret, input.requestId, input.code);
+    if (!result.ok && result.error === 'confirm') return { confirm: { email: result.email } };
     if (!result.ok) {
       const messages = {
         invalid: 'That code or link is not valid.',

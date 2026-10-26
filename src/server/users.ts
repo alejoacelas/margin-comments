@@ -250,11 +250,22 @@ export function verifyEmailCode(db: DB, secret: string, requestId: string, code:
   });
 }
 
-export function verifyEmailLink(db: DB, token: string): VerifyResult {
+/**
+ * Sign in with an emailed link. A link is only used up when the browser
+ * opening it started that sign-in (`requestIds`) or the person confirmed the
+ * account; otherwise the result asks for confirmation, so a link someone else
+ * requested can't silently sign this browser into their account.
+ */
+export function verifyEmailLink(
+  db: DB,
+  token: string,
+  opts: { requestIds: string[]; confirm: boolean },
+): VerifyResult | { ok: false; error: 'confirm'; email: string } {
   return tx(db, () => {
     const row = db.prepare('SELECT * FROM login_requests WHERE link_hash = ?').get(sha256(token)) as LoginRow | undefined;
     if (!row || row.consumed_at) return { ok: false, error: 'invalid' } as const;
     if (Date.parse(row.expires_at) < Date.now()) return { ok: false, error: 'expired' } as const;
+    if (!opts.confirm && !opts.requestIds.includes(row.id)) return { ok: false, error: 'confirm', email: row.email } as const;
     db.prepare('UPDATE login_requests SET consumed_at = ? WHERE id = ?').run(nowIso(), row.id);
     return { ok: true, email: row.email } as const;
   });

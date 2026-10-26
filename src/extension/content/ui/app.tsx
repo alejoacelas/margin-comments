@@ -5,7 +5,7 @@ import { hueIndexFor, OTHER_HUES } from '../highlights';
 import { isMine, type State, type Store, useStore, viewThreads, type ViewThread } from '../store';
 import type { Actions, AnchorBox } from './actions';
 import { Composer, ThreadView } from './thread';
-import { Avatar, Icons, Layer, SecureField, timeAgo } from './util';
+import { Avatar, Icons, Layer, Private, SecureField, timeAgo } from './util';
 
 const CARD_WIDTH = 248;
 const SIDEBAR_WIDTH = 320;
@@ -70,16 +70,17 @@ function SignIn({ state, actions, compact }: { state: State; actions: Actions; c
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const sendEmail = () => {
-    if (busy || !email.trim()) return;
+  // Enter in a field passes the field's own value (state can lag a keystroke).
+  const sendEmail = (value = email) => {
+    if (busy || !value.trim()) return;
     void run(async () => {
-      const r = await actions.startEmail(email);
-      setRequest({ ...r, email });
+      const r = await actions.startEmail(value);
+      setRequest({ ...r, email: value });
     });
   };
-  const verify = () => {
-    if (busy || !request || code.replace(/\D/g, '').length !== 6) return;
-    void run(() => actions.verifyCode(request.requestId, code));
+  const verify = (value = code) => {
+    if (busy || !request || value.replace(/\D/g, '').length !== 6) return;
+    void run(() => actions.verifyCode(request.requestId, value));
   };
 
   const run = async (fn: () => Promise<void>) => {
@@ -109,7 +110,7 @@ function SignIn({ state, actions, compact }: { state: State; actions: Actions; c
               testId="signin-email"
               actions={actions}
               onChange={setEmail}
-              onSubmit={() => sendEmail()}
+              onSubmit={v => sendEmail(v)}
             />
             <button class="primary-btn" disabled={busy || !email.trim()} data-testid="signin-send" onClick={() => sendEmail()}>
               {busy ? 'Sending…' : 'Email me a link'}
@@ -127,7 +128,7 @@ function SignIn({ state, actions, compact }: { state: State; actions: Actions; c
       ) : (
         <>
           <p>
-            We sent a link and a 6-digit code to <strong>{request.email}</strong>. Open the link here in Chrome, or enter the code.
+            We sent a link and a 6-digit code to <strong><Private text={request.email} /></strong>. Open the link here in Chrome, or enter the code.
           </p>
           <div class="form">
             <SecureField
@@ -140,7 +141,7 @@ function SignIn({ state, actions, compact }: { state: State; actions: Actions; c
               autoFocus
               actions={actions}
               onChange={setCode}
-              onSubmit={() => verify()}
+              onSubmit={v => verify(v)}
             />
             <button class="primary-btn" disabled={busy || code.replace(/\D/g, '').length !== 6} data-testid="signin-verify" onClick={() => verify()}>
               {busy ? 'Checking…' : 'Sign in'}
@@ -203,10 +204,12 @@ function Account({ user, actions }: { user: Me; actions: Actions }) {
             />
           ) : (
             <div class="n" title="Click to change your display name" style={{ cursor: 'pointer' }} onClick={() => setEditing(true)}>
-              {user.name}
+              <Private text={user.name} />
             </div>
           )}
-          <div>{user.email}</div>
+          <div>
+            <Private text={user.email} />
+          </div>
         </div>
         <button class="link-btn muted" data-testid="signout" onClick={() => void actions.signOut()}>
           Sign out
@@ -254,7 +257,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
           <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </div>
       ) : first ? (
-        <div class="row-first">{first.body}</div>
+        <div class="row-first">{thread.pending ? <Private text={first.body} /> : first.body}</div>
       ) : null}
     </div>
   );
@@ -266,10 +269,12 @@ function DraftRow({ draft, actions, note }: { draft: Draft; actions: Actions; no
     <div class="row" data-testid="draft-row">
       {draft.anchor ? (
         <div class="row-quote" style={{ background: '#f4f4f4' }}>
-          {draft.anchor.quote}
+          <Private text={draft.anchor.quote} />
         </div>
       ) : null}
-      <div class="row-first">{draft.text}</div>
+      <div class="row-first">
+        <Private text={draft.text} />
+      </div>
       {note ? <div class="c-status">{note}</div> : null}
       <div class="row-end" style={{ justifyContent: 'flex-start' }}>
         {orphaned ? null : (
@@ -293,7 +298,7 @@ function StrandedRow({ op, actions }: { op: Op; actions: Actions }) {
   return (
     <div class="row" data-testid="stranded-row">
       <div class="row-first" style={{ whiteSpace: 'pre-wrap' }}>
-        {text}
+        <Private text={text} block />
       </div>
       <div class="c-status failed">{op.error ?? 'Not saved'}</div>
       <div class="row-end" style={{ justifyContent: 'flex-start' }}>
