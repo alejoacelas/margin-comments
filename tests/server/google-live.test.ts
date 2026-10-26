@@ -84,6 +84,23 @@ describe('Google sign-in', () => {
     expect(replay.statusCode).toBe(400);
   });
 
+  it('a Google account keeps its user when its email changes', async () => {
+    const profile = { sub: 'g-stable', email: 'old@example.com', email_verified: true, name: 'Pat' };
+    await googleApp(profile);
+    const signInGoogle = async () => {
+      const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });
+      const state = new URL(start.headers.location as string).searchParams.get('state')!;
+      const cb = await t!.app.inject({ method: 'GET', url: `/api/auth/google/callback?code=abc&state=${encodeURIComponent(state)}` });
+      const token = new URLSearchParams(new URL(cb.headers.location as string).hash.slice(1)).get('session')!;
+      return (await t!.app.inject({ method: 'GET', url: '/api/me', headers: auth(token) })).json().user;
+    };
+    const first = await signInGoogle();
+    profile.email = 'new@example.com';
+    const second = await signInGoogle();
+    expect(second.id).toBe(first.id);
+    expect(second.email).toBe('new@example.com');
+  });
+
   it('refuses unverified Google emails', async () => {
     await googleApp({ sub: 'g-2', email: 'victim@example.com', email_verified: false, name: 'X' });
     const start = await t!.app.inject({ method: 'GET', url: `/api/auth/google/start?redirect_uri=${encodeURIComponent(REDIRECT)}` });
@@ -188,6 +205,24 @@ describe('live updates', () => {
     const hub = (t as any).hub;
     await new Promise(r => setTimeout(r, 200));
     expect(hub.size).toBe(0); // the stalled socket was terminated
+  });
+
+  it('acknowledges only subscriptions it installed', async () => {
+    t = await makeApp();
+    const url = await listen(t);
+    const a = await signIn(t, 'alice@example.com');
+    const s = connect(url);
+    await s.opened;
+    s.ws.send(JSON.stringify({ type: 'auth', token: a.token }));
+    await s.waitFor(m => m.type === 'ready');
+    for (let i = 0; i < 200; i += 10) {
+      s.ws.send(JSON.stringify({ type: 'subscribe', pageKeys: Array.from({ length: 10 }, (_, j) => `example.com/${i + j}`) }));
+    }
+    s.ws.send(JSON.stringify({ type: 'subscribe', pageKeys: ['example.com/extra'] }));
+    const last = await s.waitFor(m => m.type === 'subscribed' && (m.rejected.length || m.pageKeys.includes('example.com/extra')));
+    expect(last.pageKeys).toEqual([]);
+    expect(last.rejected).toEqual(['example.com/extra']);
+    s.ws.close();
   });
 
   it('rejects unauthenticated sockets', async () => {

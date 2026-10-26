@@ -11,6 +11,8 @@ export type OpBase = {
   attempts: number;
   status: 'pending' | 'failed';
   error?: string;
+  /** Server error code of a failed op (e.g. id_conflict). */
+  errorCode?: string;
 };
 
 export type Op = OpBase &
@@ -22,7 +24,7 @@ export type Op = OpBase &
     | { kind: 'resolve'; resolved: boolean }
   );
 
-export type NewOp = Op extends infer T ? (T extends Op ? Omit<T, 'opId' | 'userId' | 'createdAt' | 'attempts' | 'status' | 'error'> : never) : never;
+export type NewOp = Op extends infer T ? (T extends Op ? Omit<T, 'opId' | 'userId' | 'createdAt' | 'attempts' | 'status' | 'error' | 'errorCode'> : never) : never;
 
 export type Draft = {
   key: string;

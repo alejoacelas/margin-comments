@@ -209,3 +209,42 @@ test('a thread selected in the sidebar has exactly one editor on the page', asyn
   await expect(a.locator('[data-testid=sidebar-thread].selected')).toHaveCount(1);
   await expect(a.locator('[data-testid=reply-input]')).toHaveCount(1);
 });
+
+test('labels, links and middle clicks in our UI work, even on a hostile page', async ({ alice }) => {
+  const path = uniquePath('keys');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await alice.openSidebar(a);
+  const box = a.locator('.sb-foot input[type=checkbox]');
+  await expect(box).toBeChecked();
+  await a.locator('.sb-foot label.toggle').getByText('Email me when someone replies').click();
+  await expect(box).not.toBeChecked();
+  await closeSidebar(a);
+
+  await createThread(a, 'binds single-letter shortcuts', 'See https://example.com/notes for more');
+  const link = a.locator('[data-testid=thread-card] [data-testid=comment-body] a');
+  await expect(link).toHaveAttribute('href', 'https://example.com/notes');
+  const [tab] = await Promise.all([alice.context.waitForEvent('page'), link.click()]);
+  expect(tab.url()).toContain('example.com/notes');
+  await tab.close();
+  const [tab2] = await Promise.all([alice.context.waitForEvent('page'), link.click({ button: 'middle' })]);
+  expect(tab2.url()).toContain('example.com/notes');
+  await tab2.close();
+});
+
+test('two quick replies are two comments', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Open annotation standard', 'Start');
+  const input = a.locator('[data-testid=thread-card] [data-testid=reply-input]');
+  await input.fill('Reply A');
+  await input.press('Enter');
+  await input.fill('Reply B');
+  await input.press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Start', 'Reply A', 'Reply B']);
+  await a.reload();
+  await alice.openSidebar(a);
+  await a.locator('[data-testid=sidebar-thread]').click();
+  await expect(a.locator('[data-testid=sidebar-thread] [data-testid=comment-body]')).toHaveText(['Start', 'Reply A', 'Reply B']);
+});

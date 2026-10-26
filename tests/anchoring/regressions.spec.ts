@@ -65,3 +65,29 @@ test('a fuzzy anchor upgrades when the exact text appears, even if the page leng
     .poll(() => page.evaluate(() => ((window as any).__m.get('t').range?.startContainer.parentElement as HTMLElement | undefined)?.id), { timeout: 10_000 })
     .toBe('slot');
 });
+
+test('a highlight moves to the visible copy when a responsive layout swaps copies', async ({ page }) => {
+  await load(
+    page,
+    `<style>.mobile{display:none} body.narrow .desktop{display:none} body.narrow .mobile{display:block}</style>
+     <div class="desktop"><p id="d">Shared passage that both layouts render for their readers.</p></div>
+     <div class="mobile"><p id="m">Shared passage that both layouts render for their readers.</p></div>`,
+  );
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('d')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const where = () => page.evaluate(() => ((window as any).__m.get('t').range?.startContainer.parentElement as HTMLElement | undefined)?.id);
+  expect(await where()).toBe('d');
+  await page.evaluate(() => {
+    document.body.classList.add('narrow');
+    (window as any).__m.schedule();
+  });
+  await expect.poll(where, { timeout: 10_000 }).toBe('m');
+});

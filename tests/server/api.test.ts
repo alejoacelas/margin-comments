@@ -145,6 +145,18 @@ describe('threads', () => {
     expect([...ids].every(id => seen.has(id))).toBe(true);
   });
 
+  it('a reused id with different text is a conflict, not a silent retry', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    const p = threadPayload();
+    await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: p });
+    const changed = await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: { ...p, comment: { ...p.comment, body: 'Revised' } } });
+    expect(changed.statusCode).toBe(409);
+    const id = randomUUID();
+    expect((await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(token), payload: { id, body: 'First' } })).statusCode).toBe(201);
+    expect((await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(token), payload: { id, body: 'First' } })).statusCode).toBe(200);
+    expect((await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(token), payload: { id, body: 'Second' } })).statusCode).toBe(409);
+  });
+
   it("refuses another user's id reuse", async () => {
     const a = await signIn(t, 'alice@example.com');
     const b = await signIn(t, 'bob@example.com');

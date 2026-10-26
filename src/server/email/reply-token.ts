@@ -25,10 +25,34 @@ export function replyAddress(secret: string, domain: string, threadId: string, u
 
 export type ReplyTarget = { threadId: string; userId: string };
 
-/** Extract the bare address from `"Name" <addr@x>` or `addr@x`. */
+/**
+ * The single mailbox address in `"Name" <addr@x>` or `addr@x`, lowercased;
+ * '' when the value is malformed or holds more than one mailbox. Quoted
+ * display names and comments are removed first, so a display name such as
+ * `"<alice@example.com>"` can't pose as the address.
+ */
 export function bareAddress(raw: string): string {
-  const m = /<([^<>\s]+@[^<>\s]+)>/.exec(raw);
-  return (m ? m[1] : raw).trim().replace(/^mailto:/i, '').toLowerCase();
+  let s = raw.trim();
+  s = s.replace(/"(?:[^"\\]|\\.)*"/g, ' '); // quoted strings
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(/\([^()]*\)/g, ' '); // comments (nested ones peel off one level per pass)
+  } while (s !== prev);
+  if (/["()]/.test(s)) return '';
+  const angles = s.match(/<[^<>]*>/g) ?? [];
+  let addr: string;
+  if (angles.length === 1) {
+    if (/[<>]/.test(s.replace(angles[0], ''))) return '';
+    addr = angles[0].slice(1, -1);
+  } else if (angles.length === 0 && !/[<>]/.test(s)) {
+    addr = s;
+  } else {
+    return '';
+  }
+  addr = addr.trim().replace(/^mailto:/i, '').toLowerCase();
+  if (!/^[^\s@,;:<>]+@[^\s@,;:<>]+$/.test(addr)) return '';
+  return addr;
 }
 
 /** Verify a reply address; returns null for anything not minted by us. */

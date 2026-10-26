@@ -12,7 +12,7 @@ import { type EmailProvider, OutboxProvider, ResendProvider, RetryableEmailError
 import { EmailQueue } from './email/queue';
 import { consumeState, exchangeCode, isAllowedExtensionRedirect, startGoogle } from './google';
 import { LiveHub } from './live';
-import { checkUnsubscribeSig, notifyNewComment, queueLoginEmail } from './notifications';
+import { checkUnsubscribeSig, notificationStillWanted, notifyNewComment, queueLoginEmail } from './notifications';
 import { homePage, messagePage, outboxPage, PAGE_CSP, unsubscribePage, verifyPage } from './pages';
 import {
   addComment,
@@ -157,7 +157,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
   });
 
   const log = (msg: string, extra?: object) => app.log.info(extra ?? {}, msg);
-  const queue = new EmailQueue(db, provider, config.email.workerIntervalMs, log);
+  const queue = new EmailQueue(db, provider, config.email.workerIntervalMs, log, msg => notificationStillWanted(db, msg.meta));
   const hub = new LiveHub(db, token => userForToken(db, token, config.sessionDays), liveHeartbeatMs);
   const limiter = new Limiter();
 

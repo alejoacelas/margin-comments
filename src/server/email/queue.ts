@@ -30,6 +30,8 @@ export class EmailQueue {
     private provider: EmailProvider,
     private intervalMs = 1000,
     private log: (msg: string, extra?: object) => void = () => {},
+    /** Last check before sending (e.g. still subscribed, still has access). */
+    private stillWanted: (msg: OutgoingEmail) => boolean = () => true,
   ) {}
 
   get providerName() {
@@ -93,7 +95,11 @@ export class EmailQueue {
   }
 
   private async process(job: JobRow) {
-    const msg = JSON.parse(job.message) as OutgoingEmail;
+    const { meta: _meta, ...msg } = JSON.parse(job.message) as OutgoingEmail;
+    if (!this.stillWanted({ meta: _meta, ...msg })) {
+      this.db.prepare(`UPDATE email_jobs SET status = 'failed', last_error = 'cancelled: recipient no longer eligible' WHERE id = ?`).run(job.id);
+      return;
+    }
     try {
       const { id } = await this.provider.send(msg, job.idempotency_key);
       this.db

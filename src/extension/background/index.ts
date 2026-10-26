@@ -91,8 +91,8 @@ function draftsFor(info: PortInfo): Draft[] {
 }
 
 /** Drafts are stored per account: "<user>|<key>". */
-function draftSlot(key: string): string | null {
-  return session ? `${session.user.id}|${key}` : null;
+function draftSlot(key: string, userId = session?.user.id): string | null {
+  return userId ? `${userId}|${key}` : null;
 }
 
 function sendState(info: PortInfo) {
@@ -277,7 +277,10 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
   },
   async updateMe(params) {
     if (!session) throw new Error('Sign in first');
-    const { user } = await api<{ user: Me }>('PATCH', '/api/me', { token: session.token, body: params });
+    const token = session.token;
+    const { user } = await api<{ user: Me }>('PATCH', '/api/me', { token, body: params });
+    // The account may have changed while the request was in flight.
+    if (session?.token !== token || session.user.id !== user.id) throw new Error('You switched accounts; try again.');
     session = { ...session, user };
     await persist(['session']);
     broadcastState();
@@ -308,7 +311,17 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
   async retryOp({ opId }) {
     const op = ops.find(o => o.opId === opId && o.userId === session?.user.id);
     if (op) {
+      if (op.errorCode === 'id_conflict') {
+        // Same ids already used for different text: send this text as new.
+        if (op.kind === 'addComment') op.commentId = crypto.randomUUID();
+        if (op.kind === 'createThread') {
+          const threadId = crypto.randomUUID();
+          op.threadId = threadId;
+          op.payload = { ...op.payload, id: threadId, comment: { ...op.payload.comment, id: crypto.randomUUID() } };
+        }
+      }
       op.status = 'pending';
+      op.errorCode = undefined;
       op.error = undefined;
       op.attempts = 0;
       await persist(['outbox']);
@@ -326,10 +339,12 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
     return { ok: true as const };
   },
   async saveDraft({ draft }) {
-    const slot = draftSlot(draft.key);
-    if (!slot) throw new Error('Sign in first');
+    // Saved for the account that typed it (it may have signed out since).
+    const owner = draft.userId ?? session?.user.id;
+    const slot = draftSlot(draft.key, owner);
+    if (!slot || !owner) throw new Error('Sign in first');
     if (!draft.text.trim()) delete drafts[slot];
-    else drafts[slot] = { ...draft, userId: session!.user.id, updatedAt: Date.now() };
+    else drafts[slot] = { ...draft, userId: owner, updatedAt: Date.now() };
     pruneDrafts();
     await persist(['drafts']);
     broadcastState();
@@ -485,6 +500,7 @@ async function flush(): Promise<void> {
           }
           op.status = 'failed';
           op.error = (err as Error).message;
+          op.errorCode = err instanceof RequestError ? err.code : undefined;
           await persist(['outbox']);
           broadcastState();
         }
@@ -545,6 +561,8 @@ let reconnectDelay = 1000;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let pingTimer: ReturnType<typeof setInterval> | null = null;
 const subscribed = new Set<string>();
+/** Subscribe requests sent but not yet acknowledged. */
+const requested = new Set<string>();
 
 function setConnection(c: Connection) {
   if (connection === c) return;
@@ -579,6 +597,7 @@ function connectLive() {
   ws = socket;
   wsReady = false;
   subscribed.clear();
+  requested.clear();
   socket.onopen = () => socket.send(JSON.stringify({ type: 'auth', token }));
   socket.onmessage = ev => {
     let msg: any;
@@ -600,6 +619,7 @@ function connectLive() {
         if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'ping' }));
       }, 20_000);
     } else if (msg.type === 'subscribed' && Array.isArray(msg.pageKeys)) {
+      onSubscribed(msg.pageKeys, Array.isArray(msg.rejected) ? msg.rejected : []);
       // Live delivery for these pages is in place: fetch a snapshot now, so
       // nothing committed in between can be missed.
       for (const info of ports) if (info.keys.some(k => msg.pageKeys.includes(k))) void loadThreads(info);
@@ -649,6 +669,7 @@ function closeLive() {
   ws = null;
   wsReady = false;
   subscribed.clear();
+  requested.clear();
   if (socket) socket.close(1000);
   setConnection('offline');
 }
@@ -668,12 +689,25 @@ function syncSubscriptions() {
   const wanted = new Set<string>();
   for (const info of ports) for (const k of info.keys) wanted.add(k);
   const add = [...wanted].filter(k => !subscribed.has(k));
+  for (const k of [...requested]) if (!wanted.has(k)) requested.delete(k);
   const remove = [...subscribed].filter(k => !wanted.has(k));
-  // The server takes at most 10 keys per message.
-  for (let i = 0; i < add.length; i += 10) ws.send(JSON.stringify({ type: 'subscribe', pageKeys: add.slice(i, i + 10) }));
+  // Removals first (frees capacity), then additions in batches of the
+  // server's per-message limit. Keys count as subscribed only once the
+  // server acknowledges them; refused ones are retried later.
   for (let i = 0; i < remove.length; i += 10) ws.send(JSON.stringify({ type: 'unsubscribe', pageKeys: remove.slice(i, i + 10) }));
-  for (const k of add) subscribed.add(k);
   for (const k of remove) subscribed.delete(k);
+  const toRequest = add.filter(k => !requested.has(k));
+  for (let i = 0; i < toRequest.length; i += 10) ws.send(JSON.stringify({ type: 'subscribe', pageKeys: toRequest.slice(i, i + 10) }));
+  for (const k of toRequest) requested.add(k);
+}
+
+function onSubscribed(installed: string[], rejected: string[]) {
+  for (const k of installed) {
+    requested.delete(k);
+    subscribed.add(k);
+  }
+  for (const k of rejected) requested.delete(k);
+  if (rejected.length) setTimeout(syncSubscriptions, 15_000);
 }
 
 // ---------------------------------------------------------------------------

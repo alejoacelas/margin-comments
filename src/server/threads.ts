@@ -170,6 +170,10 @@ export function createThread(db: DB, user: UserRow, input: CreateThreadInput): C
       if (!canAccessGroup(db, user, existing.group_id)) throw new ApiError(404, 'thread_not_found');
       if (existing.author_id !== user.id) throw new ApiError(409, 'id_conflict');
       if (existing.deleted_at) throw new ApiError(410, 'thread_deleted');
+      const firstComment = db.prepare('SELECT body FROM comments WHERE id = ?').get(input.comment.id) as { body: string } | undefined;
+      // Only a true retry (same text) is idempotent; different text under the
+      // same ids must not be silently dropped.
+      if (!firstComment || firstComment.body !== input.comment.body) throw new ApiError(409, 'id_conflict', 'This thread already exists with different text');
       return { thread: serialize(db, [existing])[0], created: false, commentId: input.comment.id };
     }
     const commentClash = db.prepare('SELECT 1 FROM comments WHERE id = ?').get(input.comment.id);
@@ -238,6 +242,9 @@ export function addComment(
     const existing = db.prepare('SELECT * FROM comments WHERE id = ?').get(comment.id) as CommentRow | undefined;
     if (existing) {
       if (existing.author_id !== user.id || existing.thread_id !== threadId) throw new ApiError(409, 'id_conflict');
+      if (existing.body !== comment.body && !existing.deleted_at) {
+        throw new ApiError(409, 'id_conflict', 'This comment already exists with different text');
+      }
       const row = threadRow(db, threadId);
       if (!row || !canAccessGroup(db, user, row.group_id)) throw new ApiError(404, 'thread_not_found');
       const thread = getThread(db, threadId);

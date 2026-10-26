@@ -224,7 +224,9 @@ function CommentItem(props: {
 export function ReplyBox({ thread, drafts, actions }: { thread: ViewThread; drafts: Draft[]; actions: Actions }) {
   const key = `reply:${thread.id}`;
   void drafts;
-  const idRef = useRef(newId());
+  // One id per distinct submission: retrying the same text reuses it (so a
+  // retry can't double-post), different text always gets a new one.
+  const attemptRef = useRef<{ id: string; body: string } | null>(null);
   const [resetKey, setResetKey] = useState(0);
   return (
     <div class="reply">
@@ -238,8 +240,9 @@ export function ReplyBox({ thread, drafts, actions }: { thread: ViewThread; draf
         actions={actions}
         testId="reply-input"
         onSubmit={async body => {
-          await actions.reply(thread, idRef.current, body, key);
-          idRef.current = newId();
+          if (!attemptRef.current || attemptRef.current.body !== body) attemptRef.current = { id: newId(), body };
+          await actions.reply(thread, attemptRef.current.id, body, key);
+          attemptRef.current = null;
         }}
         onCancel={() => {
           actions.deleteDraft(key);

@@ -238,9 +238,9 @@ class MarginComments implements Actions {
     switch (msg.t) {
       case 'state':
         if ((s.user?.id ?? null) !== (msg.user?.id ?? null)) {
-          // Another account: nothing typed by the previous one carries over.
-          for (const entry of this.draftTimers.values()) if (entry.timer) clearTimeout(entry.timer);
-          this.draftTimers.clear();
+          // Another account: save what the previous one typed (under that
+          // account) and start clean; nothing carries over into the new one.
+          this.flushDrafts();
           this.composerText = '';
           if (s.user) this.store.setUi({ composer: null, activeThreadId: null });
         }
@@ -348,7 +348,14 @@ class MarginComments implements Actions {
     document.addEventListener('click', e => this.onClick(e), opts);
     document.addEventListener('mousemove', e => this.onMouseMove(e), { signal: this.abort.signal, passive: true });
     window.addEventListener('scroll', () => this.onLayoutChange(), passive);
-    window.addEventListener('resize', () => this.onLayoutChange(), { signal: this.abort.signal, passive: true });
+    window.addEventListener(
+      'resize',
+      () => {
+        this.onLayoutChange();
+        this.anchors.schedule(); // responsive layouts can hide/show copies of the text
+      },
+      { signal: this.abort.signal, passive: true },
+    );
     window.addEventListener('popstate', () => this.checkUrl(), opts);
     window.addEventListener('hashchange', () => this.checkUrl(), opts);
     window.addEventListener('pagehide', () => this.flushDrafts(), opts);
@@ -557,9 +564,18 @@ class MarginComments implements Actions {
     else if (draftKey && pending) this.flushDraft(draftKey);
   }
 
+  private composerAttempt: { threadId: string; commentId: string; body: string } | null = null;
+
   async createThread(body: string) {
-    const c = this.store.state.ui.composer;
-    if (!c) throw new Error('Nothing selected');
+    const c0 = this.store.state.ui.composer;
+    if (!c0) throw new Error('Nothing selected');
+    // A different text than a previous (possibly half-delivered) attempt is a
+    // new thread: fresh ids, so it can't be mistaken for a retry.
+    if (this.composerAttempt && this.composerAttempt.threadId === c0.threadId && this.composerAttempt.body !== body) {
+      this.store.setUi({ composer: { ...c0, threadId: crypto.randomUUID(), commentId: crypto.randomUUID() } });
+    }
+    const c = this.store.state.ui.composer!;
+    this.composerAttempt = { threadId: c.threadId, commentId: c.commentId, body };
     const keys = this.identity.keys;
     await this.mutate(
       {
@@ -639,6 +655,8 @@ class MarginComments implements Actions {
       updatedAt: Date.now(),
       anchor: key.startsWith('new:') && c && c.draftKey === key ? { pageKeys: this.identity.keys, selectors: c.selectors, quote: c.quote } : undefined,
       pageKeys: this.identity.keys,
+      // Whose text this is, even if the account changes before it's saved.
+      userId: this.store.state.user?.id,
     };
     const existing = this.draftTimers.get(key);
     if (existing?.timer) clearTimeout(existing.timer);

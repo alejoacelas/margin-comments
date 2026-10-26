@@ -54,9 +54,28 @@ export function getUserByEmail(db: DB, email: string): UserRow | null {
 
 export function upsertUser(db: DB, email: string, opts: { name?: string | null; googleSub?: string | null } = {}): UserRow {
   return tx(db, () => {
+    if (opts.googleSub) {
+      // A Google identity is its stable subject; the email can change.
+      const bySub = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(opts.googleSub) as UserRow | undefined;
+      if (bySub) {
+        if (bySub.email !== email) {
+          const taken = getUserByEmail(db, email);
+          if (!taken) {
+            db.prepare('UPDATE users SET email = ? WHERE id = ?').run(email, bySub.id);
+          } else {
+            // The (verified) new address already has its own account: use
+            // that one, and move the Google identity to it.
+            db.prepare('UPDATE users SET google_sub = NULL WHERE id = ?').run(bySub.id);
+            db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(opts.googleSub, taken.id);
+            return getUser(db, taken.id)!;
+          }
+        }
+        return getUser(db, bySub.id)!;
+      }
+    }
     const existing = getUserByEmail(db, email);
     if (existing) {
-      if (opts.googleSub && !existing.google_sub) {
+      if (opts.googleSub && existing.google_sub !== opts.googleSub) {
         db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(opts.googleSub, existing.id);
       }
       return getUser(db, existing.id)!;

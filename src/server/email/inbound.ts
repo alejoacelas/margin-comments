@@ -116,10 +116,13 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
   const user = deps.getUser(target.userId);
   if (!user) return { status: 'rejected', reason: 'unknown user' };
 
-  // The sender must be the account the address was minted for.
-  const from = bareAddress(email.headers['from'] || email.from);
-  const envelopeFrom = bareAddress(email.from);
-  if (from !== user.email.toLowerCase() || (envelopeFrom && envelopeFrom !== user.email.toLowerCase())) {
+  // The sender must be the account the address was minted for: exactly one
+  // From mailbox, matching both the header and Resend's parsed sender.
+  const account = user.email.toLowerCase();
+  const fromHeader = email.headers['from'] ?? email.from;
+  const from = bareAddress(fromHeader);
+  const parsedFrom = bareAddress(email.from);
+  if (!from || from !== account || (email.from && parsedFrom !== account)) {
     return { status: 'rejected', reason: 'sender does not match account' };
   }
   const verdict = senderVerdict(email);

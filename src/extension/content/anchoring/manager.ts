@@ -19,6 +19,7 @@ type Entry = {
   lastTry: number;
   /** A text change arrived while a fuzzy anchor's upgrade check was rate-limited. */
   upgradeDue: boolean;
+  lastVisibilityCheck: number;
   /** -1 until the first failed attempt. */
   failedAtLength: number;
 };
@@ -92,6 +93,7 @@ export class AnchorManager {
       nextTry: 0,
       lastTry: 0,
       upgradeDue: false,
+      lastVisibilityCheck: 0,
       failedAtLength: -1,
     };
   }
@@ -195,6 +197,22 @@ export class AnchorManager {
             upgrade = getIndex().text.includes(e.exactStripped);
           }
         }
+        // Responsive layouts: if the anchored copy is hidden (e.g. a desktop
+        // column while the mobile one shows), look for a visible equivalent.
+        if (stillValid && !upgrade && now - e.lastVisibilityCheck >= 2000 && !hasRects(e.state.range)) {
+          e.lastVisibilityCheck = now;
+          try {
+            const alt = anchorSelectors(root, e.selectors, { index: getIndex() });
+            if (alt && hasRects(alt.range)) {
+              e.state = { status: 'anchored', range: alt.range, fuzzy: alt.quoteScore < 1 };
+              e.anchoredText = stripWs(alt.range.toString());
+              changed = true;
+            }
+          } catch {
+            // keep the current anchor
+          }
+          continue;
+        }
         if (stillValid && !upgrade) continue;
         e.state = { status: 'pending' };
         e.tries = 0;
@@ -243,4 +261,10 @@ export class AnchorManager {
     if (changed) this.onChange();
     this.onLayout();
   }
+}
+
+function hasRects(range: Range): boolean {
+  const rects = range.getClientRects();
+  for (let i = 0; i < rects.length; i++) if (rects[i].width > 0 && rects[i].height > 0) return true;
+  return false;
 }

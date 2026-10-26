@@ -129,11 +129,17 @@ export class LiveHub {
       if (msg.type === 'subscribe' && !canAccessGroup(this.db, client.user, groupId)) {
         return this.send(client, { type: 'error', error: 'forbidden' });
       }
+      const installed: string[] = [];
+      const rejected: string[] = [];
       for (const pageKey of msg.pageKeys.slice(0, 10)) {
         if (!isValidPageKey(pageKey)) continue;
         const key = `${groupId}|${pageKey}`;
         if (msg.type === 'subscribe') {
-          if (client.keys.size >= MAX_SUBSCRIPTIONS) break;
+          if (client.keys.size >= MAX_SUBSCRIPTIONS && !client.keys.has(key)) {
+            rejected.push(pageKey);
+            continue;
+          }
+          installed.push(pageKey);
           client.keys.add(key);
           let set = this.subs.get(key);
           if (!set) this.subs.set(key, (set = new Set()));
@@ -147,7 +153,7 @@ export class LiveHub {
       }
       // Acknowledge, so the client fetches its catch-up snapshot only once
       // live delivery for these pages is in place.
-      if (msg.type === 'subscribe') this.send(client, { type: 'subscribed', groupId, pageKeys: msg.pageKeys.slice(0, 10).filter(isValidPageKey) });
+      if (msg.type === 'subscribe') this.send(client, { type: 'subscribed', groupId, pageKeys: installed, rejected });
     }
   }
 

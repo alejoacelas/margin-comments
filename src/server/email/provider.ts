@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { type DB, nowIso } from '../db';
 
 export type OutgoingEmail = {
+  /** Who/what a notification is about, so eligibility is rechecked at send time. Not sent. */
+  meta?: { userId: string; threadId: string };
   to: string;
   from: string;
   replyTo?: string;

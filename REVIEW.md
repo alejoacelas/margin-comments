@@ -65,3 +65,20 @@ Found while re-running the suite this round (not by Codex): on install, the work
 a second content-script copy into a tab that loaded during installation (the copy replaced the
 first and closed its sidebar). The worker now skips tabs whose content script is already
 connected; the e2e suite passed 3× in a row afterwards.
+
+## Round 3 — full repository (2026-10-26)
+
+Three focused passes over commit `8cf798b`.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 / C2 | A comment id could be reused by a different submission (cancel while pending, or edit after an interrupted submit); the server treated it as a retry and silently kept the old text | Fixed | Client: a new id whenever the text differs from the previous attempt (replies and new threads). Server: same id with different text is a 409 conflict; *Retry* on a conflict re-sends with fresh ids. `api.test.ts` "a reused id with different text…", e2e "two quick replies are two comments" |
+| A2 | Highlights stay on a hidden copy when a responsive layout swaps copies | Fixed | Invisible anchors are re-checked (rate-limited, also on resize); visible copies preferred, with a wider context margin for long quotes. `anchoring/regressions.spec.ts` "…responsive layout swaps copies" |
+| A3 | A `<label>` click's follow-up click on its checkbox escaped the shield (untrusted, composed) | Fixed | Untrusted events from our host are hidden from the page but keep their default action. e2e "labels, links and middle clicks…" |
+| A4 | Middle-clicking comment links did nothing | Fixed | `auxclick`/`dblclick` only stopped, never replayed. Same e2e |
+| B1 | `"<alice@…>" <mallory@…>` parsed as Alice | Fixed | RFC-aware single-mailbox parsing (quoted strings and comments removed; multiple mailboxes rejected). `email.test.ts` `bareAddress` + "display-name spoof" |
+| B2 | Google email change broke sign-in (unique `google_sub`) | Fixed | Google identities resolved by subject first; email updated or merged. `google-live.test.ts` "keeps its user when its email changes" |
+| B3 / C4 | Subscriptions refused at capacity were acknowledged as installed | Fixed | Server acks installed keys and lists rejected ones; client removes before adding, confirms only acked keys and retries rejected ones. `google-live.test.ts` "acknowledges only subscriptions it installed" |
+| B4 | Queued notifications sent after the recipient unsubscribed or lost access | Fixed | Jobs carry user/thread ids; eligibility rechecked right before sending. `email.test.ts` "re-checked at send time" |
+| C1 | `updateMe` response could be applied to another account's session | Fixed | Applied only if the session (token and user) is unchanged |
+| C3 | Switching accounts dropped drafts still waiting to be saved | Fixed | Drafts carry their author; pending ones are saved under that account before the UI resets |

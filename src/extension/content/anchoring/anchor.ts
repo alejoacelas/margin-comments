@@ -257,14 +257,19 @@ function matchQuoteInIndex(
   const exactCount = candidates.filter(c => c.quoteScore === 1).length;
   if (!acceptable(best, q.length, !!prefix || !!suffix, exactCount === 1)) return null;
 
-  // Prefer a visible match among near-ties (e.g. a duplicated mobile menu).
-  const nearTies = candidates.filter(c => c.score >= best.score - 0.02).slice(0, 10);
+  // Prefer a visible match (hidden text can't be highlighted for the reader):
+  // responsive pages often render the same passage twice and hide one copy.
+  // A visible candidate wins if it's about as good a quote match and not much
+  // worse on context; for long quotes (identical long text is the same
+  // passage) context may differ entirely.
+  const contextSlack = q.length >= 40 ? 0.45 : 0.15;
+  const contenders = candidates.filter(c => c.quoteScore >= best.quoteScore - 0.05 && c.score >= best.score - contextSlack).slice(0, 10);
   let chosen: { cand: Candidate; range: Range } | null = null;
-  for (const cand of nearTies) {
+  for (const cand of contenders) {
     const range = toRange(index, cand);
     if (!range) continue;
     if (!chosen) chosen = { cand, range };
-    if (isVisible(range)) {
+    if (isVisible(range) && acceptable(cand, q.length, !!prefix || !!suffix, exactCount === 1)) {
       chosen = { cand, range };
       break;
     }

@@ -59,6 +59,7 @@ export function notifyNewComment(db: DB, queue: EmailQueue, config: Config, thre
     queue.enqueue(
       'notification',
       {
+        meta: { userId: user.id, threadId: thread.id },
         to: user.email,
         from: fromAddress(config),
         replyTo: canReply ? replyAddress(config.appSecret, config.email.replyDomain, thread.id, user.id) : undefined,
@@ -85,4 +86,15 @@ export function queueLoginEmail(queue: EmailQueue, config: Config, to: string, r
     { to, from: fromAddress(config), subject: content.subject, text: content.text, html: content.html },
     `login/${requestId}`,
   );
+}
+
+/** Is this user still someone we should email about this thread? */
+export function notificationStillWanted(db: DB, meta: { userId: string; threadId: string } | undefined): boolean {
+  if (!meta) return true;
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(meta.userId) as UserRow | undefined;
+  const thread = db.prepare('SELECT group_id, deleted_at FROM threads WHERE id = ?').get(meta.threadId) as
+    | { group_id: string; deleted_at: string | null }
+    | undefined;
+  if (!user || !user.notify_email || !thread || thread.deleted_at) return false;
+  return canAccessGroup(db, user, thread.group_id);
 }

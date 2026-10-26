@@ -27,6 +27,20 @@ describe('reply addresses', () => {
   });
 });
 
+describe('bareAddress', () => {
+  it('takes the real mailbox, never one hidden in a display name or comment', async () => {
+    const { bareAddress } = await import('../../src/server/email/reply-token');
+    expect(bareAddress('Alice <Alice@Example.com>')).toBe('alice@example.com');
+    expect(bareAddress('alice@example.com')).toBe('alice@example.com');
+    expect(bareAddress('"Alice, A." <alice@example.com>')).toBe('alice@example.com');
+    expect(bareAddress('"<alice@example.com>" <mallory@evil.test>')).toBe('mallory@evil.test');
+    expect(bareAddress('(alice@example.com) mallory@evil.test')).toBe('mallory@evil.test');
+    expect(bareAddress('alice@example.com, mallory@evil.test')).toBe('');
+    expect(bareAddress('<alice@example.com> <mallory@evil.test>')).toBe('');
+    expect(bareAddress('"unterminated <alice@example.com>')).toBe('');
+  });
+});
+
 describe('svix signatures', () => {
   const secret = 'whsec_' + Buffer.from('k'.repeat(24)).toString('base64');
   const body = '{"type":"email.received"}';
@@ -185,6 +199,21 @@ describe('notifications and inbound replies (through the API)', () => {
     void a;
   });
 
+  it('queued notifications are re-checked at send time (unsubscribed or removed users get nothing)', async () => {
+    const { a, b, p } = await setup();
+    t.provider.sent = [];
+    t.provider.failures.push(new RetryableEmailError('503', 1));
+    await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'later' } });
+    await t.queue.tick(); // fails transiently
+    await t.app.inject({ method: 'PATCH', url: '/api/me', headers: auth(a.token), payload: { notifyEmail: false } });
+    await new Promise(r => setTimeout(r, 10));
+    await t.queue.tick();
+    expect(t.provider.sent.filter(s => s.msg.to === 'alice@example.com')).toEqual([]);
+    const job = t.db.prepare("SELECT status, last_error FROM email_jobs WHERE kind = 'notification' ORDER BY created_at DESC LIMIT 1").get() as any;
+    expect(job.status).toBe('failed');
+    expect(job.last_error).toMatch(/no longer eligible/);
+  });
+
   it('a comment and its notifications commit together', async () => {
     const { b, p } = await setup();
     const original = t.queue.enqueue.bind(t.queue);
@@ -236,6 +265,7 @@ describe('notifications and inbound replies (through the API)', () => {
       ['inconclusive auth', { from: 'alice@example.com', authentication: { spf: 'gray', dkim: 'gray', dmarc: 'gray' } }],
       ['self-asserted header only', { from: 'alice@example.com', authentication: null, headers: { 'authentication-results': 'mx; dmarc=pass' } }],
       ['spf-only (unaligned envelope)', { from: 'alice@example.com', authentication: { spf: 'pass', dkim: 'gray', dmarc: 'gray' } }],
+      ['display-name spoof', { from: 'mallory@evil.test', headers: { from: '"<alice@example.com>" <mallory@evil.test>' } }],
     ];
     for (const [name, o] of cases) {
       const r = await deliver(receivedEmail({ id: randomUUID(), to: [replyTo], text: `forged ${name}`, ...o }));

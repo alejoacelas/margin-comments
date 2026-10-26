@@ -50,12 +50,13 @@ const SHIELDED = [
   'dragstart',
 ];
 
-// Scrolling inside our panels must not be hijacked by page wheel handlers;
-// there's nothing of ours to re-dispatch to, so these are only stopped.
-const STOP_ONLY = ['wheel'];
+// Only stopped (default action kept, nothing replayed): scrolling inside our
+// panels, and middle/double clicks (native middle-click opens links in a new
+// tab, which a replayed copy can't do; we have no handlers for either).
+const STOP_ONLY = ['wheel', 'auxclick', 'dblclick'];
 
 // Activation-bearing events: replayed later instead of synchronously.
-const DEFERRED = ['click', 'auxclick', 'dblclick'];
+const DEFERRED = ['click'];
 
 function clone(e: Event): Event | null {
   const Ctor = e.constructor as { new (type: string, init: object): Event };
@@ -79,8 +80,12 @@ if (!window.__marginCommentsShield) {
 
   const onEvent = (e: Event) => {
     const host = shield.host;
-    if (!host || !e.isTrusted || e.target !== host) return;
+    if (!host || e.target !== host) return;
     e.stopImmediatePropagation();
+    // Browser-generated follow-ups from our replayed events (e.g. the click a
+    // <label> sends to its checkbox) are composed and untrusted: hide them
+    // from the page but let them run their default action untouched.
+    if (!e.isTrusted) return;
     if (STOP_ONLY.includes(e.type)) return;
     const inner = e.composedPath()[0];
     if (!(inner instanceof Node) || inner === host) return;
@@ -96,7 +101,7 @@ if (!window.__marginCommentsShield) {
   };
 
   for (const type of [...SHIELDED, ...DEFERRED]) window.addEventListener(type, onEvent, { capture: true });
-  for (const type of STOP_ONLY) window.addEventListener(type, onEvent, { capture: true, passive: true });
+  for (const type of STOP_ONLY) window.addEventListener(type, onEvent, { capture: true, passive: type === 'wheel' });
 }
 
 export {};
