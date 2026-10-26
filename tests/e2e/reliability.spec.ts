@@ -1,4 +1,4 @@
-import { createThread, expect, highlightTexts, selectText, setNetwork, test, uniquePath } from './helpers';
+import { BACKEND, createThread, expect, highlightTexts, selectText, setNetwork, test, uniquePath } from './helpers';
 
 test.afterEach(async ({ alice, bob }) => {
   await setNetwork(false);
@@ -89,12 +89,13 @@ test('a reply that can no longer be saved stays visible with its text', async ({
   await a.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('My reply that will bounce');
   await a.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').press('Enter');
 
-  // Bob deletes the thread meanwhile (his own connection is cut too, so do it after).
+  // Bob deletes the thread meanwhile, straight at the backend (the extensions'
+  // connection is cut), so the reply can only fail once the network is back.
+  const commentId = await b.locator('[data-testid=thread-card] [data-testid=comment]').first().getAttribute('data-comment-id');
+  const token = await bob.sw.evaluate(async () => ((await chrome.storage.local.get('session')).session as { token: string }).token);
+  const del = await fetch(`${BACKEND}/api/comments/${commentId}`, { method: 'DELETE', headers: { authorization: `Bearer ${token}` } });
+  expect(del.ok).toBe(true);
   await setNetwork(false);
-  const head = b.locator('[data-testid=thread-card] [data-testid=comment]').first();
-  await head.hover();
-  await head.locator('[data-testid=delete]').click();
-  await head.locator('[data-testid=confirm-delete]').click();
 
   const stranded = a.locator('[data-testid=stranded-row]');
   await expect(stranded).toContainText('My reply that will bounce', { timeout: 30_000 });

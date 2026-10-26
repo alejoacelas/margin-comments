@@ -289,3 +289,16 @@ Reviewer C found nothing material.
 
 All four regressions verified to fail on the previous code.
 
+## Round 22 — full repository (2026-10-26)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| B1 | **email-reply-parser's regular expressions are quadratic on some inputs: an authenticated 64 KB reply of repeated digits blocked the server's event loop for ~6 s** | Fixed | The dependency is gone; reply text uses only our own rules (all linear), plus the RFC 3676 `-- ` delimiter it used to provide; input is capped at 200 KB. `email.test.ts` "parses hostile and long input in linear time" (4× the reported input, plain and HTML, under 1.5 s) |
+| B2 | email-reply-parser treated any `---`/`===` line as a signature and dropped the text below it | Fixed | Same change. `email.test.ts` "keeps text below separator lines" |
+| A1 | Highlights on text placed directly in a shadow root couldn't be clicked (the hit element is the host) | Fixed | Hit-testing keeps the root and accepts its host for root-level text, then checks the character under the caret. e2e "text placed directly in a web component's shadow root can be commented on and clicked"; verified to fail without the fix |
+
+Also: the e2e "a reply that can no longer be saved…" was timing-dependent under load (the queued reply could
+land before the other user's delete); the delete now goes straight to the backend while the extensions are offline.
+

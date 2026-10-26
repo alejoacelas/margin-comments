@@ -1,30 +1,34 @@
-import EmailReplyParser from 'email-reply-parser';
 import { convert } from 'html-to-text';
+
+/** Longer emails are cut (a reply posts at most a few comments' worth). */
+const MAX_INPUT = 200_000;
 
 /**
  * Extract just the new text from an email reply: drop quoted history
  * ("On … wrote:", Outlook headers, "> " lines) and signatures.
  *
- * Layered: our own cut rules first (they know our reply-address format and
- * the common client separators), then crisp-oss/email-reply-parser for
- * signatures and localized quote headers.
+ * All our own rules, each linear in the input: an earlier version also ran
+ * email-reply-parser, whose regular expressions are quadratic on some inputs
+ * (a long run of digits blocked the server for seconds) and which dropped
+ * everything below a "---" line as a signature.
  */
 export function extractReply(text: string | null, html: string | null): string {
-  let body = text && text.trim() ? text : html ? htmlToText(html) : '';
-  body = body.replace(/\r\n?/g, '\n').replace(/ /g, ' ');
+  let body = text && text.trim() ? text.slice(0, MAX_INPUT) : html ? htmlToText(html.slice(0, MAX_INPUT * 5)) : '';
+  body = body.slice(0, MAX_INPUT).replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
   body = cutQuotedHistory(body);
-  let visible: string;
-  try {
-    visible = new EmailReplyParser().read(body).getVisibleText();
-  } catch {
-    visible = body;
-  }
-  // The parser can be overeager on single-paragraph replies; never return
-  // empty when our own cut left real text.
-  if (!visible.trim() && body.trim()) visible = body;
+  let visible = cutSignatureDelimiter(body);
   visible = stripSignatureLines(visible);
   visible = stripSignOff(visible);
   return visible.replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** RFC 3676: a line of exactly "-- " (or "--") starts the signature. */
+function cutSignatureDelimiter(text: string): string {
+  const lines = text.split('\n');
+  const at = lines.findIndex(l => /^--\s?$/.test(l));
+  if (at <= 0) return text;
+  const above = lines.slice(0, at).join('\n');
+  return above.trim() ? above : text;
 }
 
 const SIGN_OFF = /^(best|best wishes|best regards|kind regards|warm regards|regards|thanks|thanks so much|many thanks|thank you|cheers|sincerely|all the best|warmly|talk soon|xo|xx)[,.!]?$/i;

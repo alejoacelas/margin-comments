@@ -340,3 +340,32 @@ test('comments on text inside web components (open shadow roots)', async ({ alic
   await expect.poll(async () => (await highlightTexts(a)).sort()).toEqual([quote, 'A link inside the component with words', 'Light paragraph after the component'].sort());
 });
 
+test('text placed directly in a web component\'s shadow root can be commented on and clicked', async ({ alice }) => {
+  const a = await alice.open(uniquePath('webcomponent'));
+  await alice.signIn(a);
+  const quote = 'A directly rendered sentence';
+  await a.evaluate(q => {
+    const t = document.querySelector('plain-label')!.shadowRoot!.firstChild as Text;
+    getSelection()!.setBaseAndExtent(t, 0, t, q.length);
+    document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+  }, quote);
+  await a.locator('[data-testid=adder]').click();
+  const input = a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]');
+  await input.fill('On root text');
+  await input.press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['On root text']);
+  await expect.poll(() => highlightTexts(a)).toEqual([quote]);
+  await a.keyboard.press('Escape');
+  await expect(a.locator('[data-testid=thread-card]')).toHaveCount(0);
+  const at = await a.evaluate(() => {
+    const t = document.querySelector('plain-label')!.shadowRoot!.firstChild as Text;
+    const r = document.createRange();
+    r.setStart(t, 2);
+    r.setEnd(t, 10);
+    const b = r.getBoundingClientRect();
+    return [b.left + b.width / 2, b.top + b.height / 2] as [number, number];
+  });
+  await a.mouse.click(...at);
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['On root text']);
+});
+

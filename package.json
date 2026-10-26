@@ -25,7 +25,6 @@
     "@fastify/rate-limit": "11.2.1",
     "@fastify/websocket": "11.3.4",
     "approx-string-match": "2.0.1",
-    "email-reply-parser": "2.3.9",
     "fastify": "5.12.7",
     "html-to-text": "10.0.1",
     "preact": "10.29.8",

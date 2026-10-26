@@ -179,9 +179,13 @@ Choices made while building this without supervision, with the reasoning.
   account, and Resend's own SPF/DKIM/DMARC verdict is positive (the message's
   Authentication-Results header is sender-controlled and ignored). Auto-replies are ignored.
   Comment ids derive from the email id, so redeliveries never double-post.
-- **Reply text:** our own cut rules (Gmail/Apple/Outlook/localized "On … wrote:" headers, `>`
-  quotes, our reply address) then crisp-oss/email-reply-parser, then signature and sign-off
-  stripping ("Thanks,\nBob").
+- **Reply text:** our own rules only, each linear in the input: history headers (Gmail/Apple/
+  Thunderbird/localized "On … wrote:", after which `>`-quoted history is dropped but answers
+  between quotes are kept; Outlook separators and `From:/Sent:` blocks, after which everything
+  is dropped), our reply address, the RFC 3676 `-- ` signature delimiter, mobile signatures and
+  sign-offs ("Thanks,\nBob"). HTML-only replies are cut at Outlook's history marker and
+  converted with blockquotes as `> ` lines and link URLs kept. (email-reply-parser was dropped:
+  quadratic regexes on some inputs, and it discarded text below any `---` line.)
 - **Testing without Resend:** a fake Resend server implements `POST /emails`,
   `GET /emails/receiving/:id` and delivers Svix-signed `email.received` webhooks, so the e2e
   tests run the real provider, webhook and parsing code.

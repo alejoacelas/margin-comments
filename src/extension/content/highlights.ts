@@ -138,7 +138,12 @@ export class Highlighter {
       // The text must actually be what's under the pointer: rects also cover
       // text clipped by an overflow container or hidden under something else.
       under ??= deepElementFromPoint(x, y);
-      if (!under || !c.item.range.intersectsNode(under.element)) continue;
+      if (!under) continue;
+      // Text directly in a shadow root has no element of its own: the hit
+      // element is then that root's host.
+      const rangeRoot = c.item.range.startContainer.getRootNode();
+      const onRootText = rangeRoot instanceof ShadowRoot && rangeRoot.host === under.element && under.shadowRoots.includes(rangeRoot);
+      if (!onRootText && !c.item.range.intersectsNode(under.element)) continue;
       if (fresh && !textShownAt(c.item.range, x, y, under.shadowRoots)) continue;
       if (c.length < 0) c.length = c.item.range.toString().length;
       if (!best || c.length < best.length) best = c;
@@ -189,9 +194,10 @@ export function deepElementFromPoint(x: number, y: number): { element: Element; 
   for (let depth = 0; depth < 32; depth++) {
     const root: ShadowRoot | null = element.shadowRoot;
     if (!root) break;
-    const inner: Element | null = root.elementFromPoint(x, y);
-    if (!inner || inner === element) break;
     shadowRoots.push(root);
+    const inner: Element | null = root.elementFromPoint(x, y);
+    // The host itself: the point is on text placed directly in its root.
+    if (!inner || inner === element) break;
     element = inner;
   }
   return { element, shadowRoots };

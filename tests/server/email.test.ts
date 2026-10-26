@@ -200,6 +200,18 @@ describe('extractReply', () => {
     expect(extractReply(null, '<p>See <a href="https://example.com/proposal">my proposal</a>.</p>')).toBe('See my proposal [https://example.com/proposal].');
     expect(extractReply(null, '<p>At <a href="https://example.com/x">https://example.com/x</a></p>')).toBe('At https://example.com/x');
   });
+  it('parses hostile and long input in linear time', () => {
+    for (const input of ['2026'.repeat(16000), '2026'.repeat(64000), 'a-'.repeat(50000), '>'.repeat(100000), ('On x wrote:\n' + '> q\n').repeat(5000)]) {
+      const t0 = performance.now();
+      extractReply(input, null);
+      extractReply(null, `<p>${input}</p>`);
+      expect(performance.now() - t0, input.slice(0, 20)).toBeLessThan(1500);
+    }
+  });
+  it('keeps text below separator lines', () => {
+    expect(extractReply('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.', null)).toBe('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.');
+    expect(extractReply('Two options:\n===\nA or B.\n\nOn Mon, Bob wrote:\n> which?', null)).toBe('Two options:\n===\nA or B.');
+  });
   it('returns empty for a quote-only reply', () => {
     expect(extractReply('\n\nOn Mon, Oct 26, 2026 Margin <x@y.z> wrote:\n> hi', null)).toBe('');
   });

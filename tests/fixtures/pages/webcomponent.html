@@ -4,6 +4,7 @@
 <p id="light">Light paragraph before the component, ordinary text.</p>
 <article-card><p slot="extra">Slotted light text that the card shows inside its frame.</p></article-card>
 <p>Light paragraph after the component.</p>
+<plain-label></plain-label>
 <script>
 customElements.define('article-card', class extends HTMLElement {
   constructor() {
@@ -15,6 +16,13 @@ customElements.define('article-card', class extends HTMLElement {
   rerender() {
     const p = this.shadowRoot.getElementById('shadow-p');
     p.replaceWith(Object.assign(document.createElement('p'), { id: 'shadow-p', textContent: p.textContent }));
+  }
+});
+customElements.define('plain-label', class extends HTMLElement {
+  constructor() {
+    super();
+    // Text directly in the shadow root, no element around it.
+    this.attachShadow({ mode: 'open' }).textContent = 'A directly rendered sentence in a component.';
   }
 });
 </script></body></html>
