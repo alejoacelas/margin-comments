@@ -188,8 +188,8 @@ export async function selectText(page: Page, text: string, occurrence = 0) {
 }
 
 /** A fresh URL for a fixture page, so each test has its own threads. */
-export function uniquePath(file: string, opts: { csp?: boolean } = {}): string {
-  return `${opts.csp ? '/csp' : ''}/u/${Math.random().toString(36).slice(2, 10)}/${file}`;
+export function uniquePath(file: string, opts: { csp?: boolean; sandbox?: boolean } = {}): string {
+  return `${opts.csp ? '/csp' : opts.sandbox ? '/sandbox' : ''}/u/${Math.random().toString(36).slice(2, 10)}/${file}`;
 }
 
 /** Viewport center of the first occurrence of `text` (may span elements). */

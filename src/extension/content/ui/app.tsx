@@ -245,7 +245,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
         {thread.quote}
       </div>
       <div class="row-meta">
-        <span class="name">{thread.author.name}</span>
+        <span class="name">{thread.pending ? <Private text={thread.author.name} /> : thread.author.name}</span>
         <span>{timeAgo(thread.createdAt)}</span>
         {replies > 0 ? <span>{replies === 1 ? '1 reply' : `${replies} replies`}</span> : null}
         {props.orphan ? <span class="tag warn">Text not found</span> : null}

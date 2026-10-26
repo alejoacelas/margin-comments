@@ -203,3 +203,16 @@ into the field being sent, leaving a phantom "unsent draft" with the posted text
 locks itself on Enter until the editor confirms. e2e "keys typed right after Enter never end up…",
 verified to fail without the lock.
 
+## Round 13 — full repository (2026-10-26)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Unsent (offline or failed) comments showed the author name, i.e. your own name, as findable text, so a page could learn who you are before anything was published | Fixed | The author name of unpublished comments and threads is private text too. The production-build privacy e2e now also makes a comment offline and checks the page can't find the name or the text; verified to fail without the fix |
+
+Found while testing environment differences (with tests): on sandboxed pages (CSP `sandbox`, like
+raw.githubusercontent.com) our input frames can't run their script, so nobody could sign in or
+type. Fields fall back to plain inputs there. e2e "works on sandboxed pages". The plain-HTTP
+production smoke test now includes info.cern.ch.
+

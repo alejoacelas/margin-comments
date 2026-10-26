@@ -492,7 +492,7 @@ test('the production build (closed shadow root) works with real mouse and keyboa
   }
 });
 
-test("in the production build the page can't find or select your email or drafts", async () => {
+test("in the production build the page can't find or select your email, name, drafts or unsent comments", async () => {
   const user = await Person.launch('prod-private', `prod-private-${Date.now()}@example.com`, EXT_PATH_CLOSED);
   try {
     await user.signInHeadless();
@@ -540,6 +540,37 @@ test("in the production build the page can't find or select your email or drafts
     expect(probe.draftWord).toBe(false);
     expect(probe.all).not.toContain('musings');
     expect(probe.all).not.toContain(user.email);
+
+    // A comment made offline (queued, not yet public) doesn't reveal your
+    // name or its text, neither in its card nor in the sidebar row.
+    const name: string = await user.sw.evaluate(async () => ((await chrome.storage.local.get('session')).session as { user: { name: string } }).user.name);
+    await setNetwork(true);
+    try {
+      await selectText(p, 'The practice was common');
+      const chip2 = await p.evaluate(() => {
+        const r = document.getSelection()!.getRangeAt(0).getBoundingClientRect();
+        return { x: r.right + 10 + 25, y: Math.max(4, r.top) + 10 };
+      });
+      await p.waitForTimeout(400);
+      await p.mouse.click(chip2.x, chip2.y);
+      await p.waitForTimeout(400);
+      await p.keyboard.type('Queued offline remark');
+      await p.keyboard.press('Enter');
+      await expect.poll(() => p.evaluate(() => { getSelection()!.removeAllRanges(); return (window as any).find('Saving'); })).toBe(true);
+      const offline = await p.evaluate(
+        ({ name }) => {
+          const find = (q: string) => {
+            getSelection()!.removeAllRanges();
+            return (window as any).find(q);
+          };
+          return { name: find(name), body: find('Queued offline remark') };
+        },
+        { name },
+      );
+      expect(offline).toEqual({ name: false, body: false });
+    } finally {
+      await setNetwork(false);
+    }
     expect(user.errors).toEqual([]);
   } finally {
     await user.close();

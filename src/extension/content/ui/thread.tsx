@@ -137,7 +137,8 @@ function CommentItem(props: {
   return (
     <div class="comment" data-comment-id={comment.id} data-testid="comment">
       <div class="c-head">
-        <span class="c-name">{comment.author.name}</span>
+        {/* Not yet published: the name is yours, and still private. */}
+        <span class="c-name">{comment.pending || comment.failedOp ? <Private text={comment.author.name} /> : comment.author.name}</span>
         <span class="c-time" title={new Date(comment.createdAt).toLocaleString()}>
           {timeAgo(comment.createdAt)}
           {comment.editedAt ? ' · edited' : ''}

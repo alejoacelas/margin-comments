@@ -242,8 +242,8 @@ createServer(async (req, res) => {
   }
   // /u/<id>/<file>: the same fixture under a unique URL (and canonical), so
   // every test gets its own page and its own threads.
-  const unique = /^\/(?:csp\/)?u\/[\w-]+\/(.+)$/.exec(url.pathname);
-  let file = versions.get(url.pathname) ?? (unique ? unique[1] : url.pathname.replace(/^\/(csp\/)?/, ''));
+  const unique = /^\/(?:csp\/|sandbox\/)?u\/[\w-]+\/(.+)$/.exec(url.pathname);
+  let file = versions.get(url.pathname) ?? (unique ? unique[1] : url.pathname.replace(/^\/(csp\/|sandbox\/)?/, ''));
   if (!file || file.endsWith('/')) file += 'index.html';
   if (!extname(file)) file += '.html';
   const full = resolve(pagesDir, file);
@@ -253,6 +253,8 @@ createServer(async (req, res) => {
   }
   const headers = { 'content-type': TYPES[extname(full)] ?? 'application/octet-stream', 'cache-control': 'no-store' };
   if (url.pathname.startsWith('/csp/')) headers['content-security-policy'] = STRICT_CSP;
+  // Like raw.githubusercontent.com: a sandboxed document (opaque origin, no scripts).
+  if (url.pathname.startsWith('/sandbox/')) headers['content-security-policy'] = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
   res.writeHead(200, headers);
   let content = readFileSync(full);
   if (unique && extname(full) === '.html') {

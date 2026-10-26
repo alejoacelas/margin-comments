@@ -67,7 +67,8 @@ Choices made while building this without supervision, with the reasoning.
   a frame that loads twice (the page navigated it) is replaced with a fresh session. Page CSPs
   don't apply to extension frames (tested under `frame-src 'none'`).
 - **Private text is drawn as CSS generated content**: your email and name, drafts, unsaved
-  comments, and labels only your own comments have (edit/delete). A closed shadow root doesn't
+  comments (and their author name, which is yours), and labels only your own comments have
+  (edit/delete). A closed shadow root doesn't
   hide text from the page's `window.find()`, which also works as an oracle (true/false) that can
   rebuild text a character at a time, nor from `find` + `execCommand('selectAll')`; generated
   content (`content: attr(data-t)`) is invisible to both. The rest of the UI is
@@ -76,6 +77,10 @@ Choices made while building this without supervision, with the reasoning.
   private text can't be selected, its "Copy text" button is itself an extension frame that
   copies from inside the frame: the text is never selected in the page, and it works on
   plain-HTTP pages, where content scripts have no clipboard API.
+- **Sandboxed pages** (CSP `sandbox`, e.g. raw file hosts) pass the sandbox on to our frames,
+  whose script then never runs. There (origin `"null"`), or if a frame hasn't started after 8 s,
+  fields fall back to plain inputs in the shadow root. Such pages can't run scripts of their own
+  without `allow-scripts`, so nothing on them can read those inputs.
 - **Plain-HTTP pages are insecure contexts**: content scripts there lack `crypto.randomUUID()`
   and `navigator.clipboard`, so ids come from `getRandomValues` (`src/shared/id.ts`). An e2e
   test runs on `http://insecure.test` (mapped to localhost, which itself counts as secure).

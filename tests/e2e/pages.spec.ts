@@ -1,4 +1,4 @@
-import { createThread, expect, FIXTURES, highlightTexts, selectBetween, selectText, setVersion, test, textCenter, uniquePath } from './helpers';
+import { closeSidebar, createThread, expect, FIXTURES, highlightTexts, selectBetween, selectText, setVersion, test, textCenter, uniquePath, waitForEmail } from './helpers';
 
 test.afterEach(async ({ alice }) => {
   expect(alice.errors, 'host page console errors').toEqual([]);
@@ -182,5 +182,35 @@ test('works on plain-HTTP pages (insecure context, no crypto.randomUUID)', async
   await a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').fill('And replies');
   await a.locator('[data-testid=thread-card]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]').press('Enter');
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Works over plain HTTP', 'And replies']);
+});
+
+test('works on sandboxed pages (CSP sandbox), where our input frames cannot run', async ({ alice }) => {
+  const a = await alice.open(uniquePath('article', { sandbox: true }));
+  expect(await a.evaluate(() => window.origin)).toBe('null');
+  await alice.openSidebar(a);
+  // Plain fields in our shadow root instead of frames.
+  await expect(a.locator('iframe.field-frame')).toHaveCount(0);
+  const since = Date.now();
+  await a.locator('[data-testid=signin-email]').fill(alice.email);
+  await a.locator('[data-testid=signin-email]').press('Enter');
+  const mail = await waitForEmail(alice.email, m => /sign-in code/.test(m.subject), since);
+  await a.locator('[data-testid=signin-code]').fill(/(\d{6})/.exec(mail.subject)![1]);
+  await a.locator('[data-testid=signin-code]').press('Enter');
+  await expect(a.locator('[data-testid=signout]')).toBeVisible();
+  await closeSidebar(a);
+  await selectText(a, 'Marginalia record a conversation');
+  await a.locator('[data-testid=adder]').click();
+  await a.locator('[data-testid=composer-input]').fill('Works when sandboxed');
+  await a.locator('[data-testid=composer-input]').press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Works when sandboxed']);
+  await expect.poll(() => highlightTexts(a)).toEqual(['Marginalia record a conversation']);
+  await a.locator('[data-testid=reply-input]').fill('Reply too');
+  await a.locator('[data-testid=reply-input]').press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Works when sandboxed', 'Reply too']);
+  // Playwright's own main-world init script is blocked by the sandbox and logs
+  // this (checked via CDP: an anonymous script in the page's default world,
+  // not ours); the extension itself logs nothing.
+  const ours = alice.errors.filter(e => !/Blocked script execution .* the document's frame is sandboxed/.test(e));
+  alice.errors.splice(0, alice.errors.length, ...ours);
 });
 
