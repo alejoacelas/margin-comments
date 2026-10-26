@@ -279,7 +279,12 @@ chrome.runtime.onConnect.addListener(port => {
       attachFrame(sid, port);
     } else if (msg.t === 'event' && sid && msg.sid === sid) {
       const session = inputSessions.get(sid);
-      if (session && session.frame === port) post(session.owner, { t: 'input-event', sid, type: msg.type, value: String(msg.value ?? '') });
+      if (session && session.frame === port) {
+        const value = String(msg.value ?? '');
+        // Keep the current text: a field reopened in a new window starts from it.
+        if (msg.type === 'input' || msg.type === 'submit') session.init = { ...session.init, value };
+        post(session.owner, { t: 'input-event', sid, type: msg.type, value });
+      }
     }
   });
   port.onDisconnect.addListener(() => {
@@ -519,6 +524,7 @@ const handlers: { [M in RpcMethod]: Handler<M> } = {
   async inputCommand({ sid, cmd }, info) {
     const session = inputSessions.get(sid);
     if (!session || session.owner !== info) return { ok: true as const };
+    if (cmd.cmd === 'set') session.init = { ...session.init, value: cmd.value };
     if (session.frame) session.frame.postMessage({ t: 'cmd', cmd });
     else session.queued.push(cmd);
     return { ok: true as const };

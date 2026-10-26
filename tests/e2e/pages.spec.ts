@@ -214,5 +214,16 @@ test("works on sandboxed pages, where our frames can't run: you type in an exten
   await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Typed in a window']);
   await expect.poll(() => w3.isClosed()).toBe(true);
   await expect.poll(() => highlightTexts(a)).toEqual(['Marginalia record a conversation']);
+  // Close a window mid-reply and reopen it: the text is still there.
+  const [w4] = await Promise.all([alice.context.waitForEvent('page'), a.locator('[data-testid=reply-input-window]').click()]);
+  await w4.locator('[data-testid=reply-input]').fill('An unfinished reply');
+  await expect(a.locator('[data-testid=reply-input-window]')).toHaveText('Continue typing');
+  await w4.close();
+  const [w5] = await Promise.all([alice.context.waitForEvent('page'), a.locator('[data-testid=reply-input-window]').click()]);
+  await expect(w5.locator('[data-testid=reply-input]')).toHaveValue('An unfinished reply');
+  await w5.locator('[data-testid=reply-input]').press('End');
+  await w5.locator('[data-testid=reply-input]').pressSequentially(', finished');
+  await w5.locator('[data-testid=reply-input]').press('Enter');
+  await expect(a.locator('[data-testid=thread-card] [data-testid=comment-body]')).toHaveText(['Typed in a window', 'An unfinished reply, finished']);
   expect(await a.evaluate(() => (window as any).__keys)).toBe('');
 });
