@@ -101,7 +101,8 @@ const manifest = {
     default_icon: { 16: 'icons/icon-16.png', 32: 'icons/icon-32.png' },
   },
   background: { service_worker: 'background.js', type: 'module' },
-  permissions: ['storage', 'alarms', 'identity', 'scripting'],
+  // unlimitedStorage: drafts and queued changes must never hit the 10 MB quota.
+  permissions: ['storage', 'unlimitedStorage', 'alarms', 'identity', 'scripting'],
   host_permissions: ['http://*/*', 'https://*/*', `${apiOrigin}/*`],
   content_scripts: [
     { matches: ['http://*/*', 'https://*/*'], js: ['early.js'], run_at: 'document_start', all_frames: false },

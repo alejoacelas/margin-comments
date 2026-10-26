@@ -84,8 +84,9 @@ export class ResendProvider implements EmailProvider {
     }
     let text: string;
     try {
-      text = await res.text();
+      text = await readCapped(res, MAX_RESPONSE_BYTES);
     } catch (err) {
+      if (err instanceof PermanentEmailError) throw err;
       // The connection dropped (or timed out) after the headers: try again.
       throw new RetryableEmailError(`network (body): ${(err as Error).message}`);
     }
@@ -190,3 +191,31 @@ export class OutboxProvider implements EmailProvider {
     return { id };
   }
 }
+
+/** Responses (a received email with its body) above this are refused, not buffered. */
+const MAX_RESPONSE_BYTES = 12 * 1024 * 1024;
+
+/** Read a response body, stopping (and cancelling) once it exceeds `max` bytes. */
+async function readCapped(res: Response, max: number): Promise<string> {
+  const declared = Number(res.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel().catch(() => {});
+    throw new PermanentEmailError(`response too large (${declared} bytes)`);
+  }
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel().catch(() => {});
+      throw new PermanentEmailError(`response too large (over ${max} bytes)`);
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+

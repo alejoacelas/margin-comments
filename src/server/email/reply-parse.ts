@@ -25,8 +25,15 @@ export function extractReplyChecked(text: string | null, html: string | null): {
   const source = useText ? text! : html ?? '';
   const truncated = source.length > MAX_INPUT;
   let body = useText ? source.slice(0, MAX_INPUT) : source ? htmlToText(source.slice(0, MAX_INPUT)) : '';
+  // The converter marks content it had to skip (too deep, too many children).
+  let clipped = false;
+  if (body.includes(CLIPPED)) {
+    clipped = true;
+    body = body.split(CLIPPED).join('');
+  }
+  clipped ||= body.length > MAX_INPUT;
   body = body.slice(0, MAX_INPUT).replace(/\r\n?/g, '\n').replace(/\u00a0/g, ' ');
-  return { text: finishReply(body), truncated };
+  return { text: finishReply(body), truncated: truncated || clipped };
 }
 
 function finishReply(body: string): string {
@@ -131,11 +138,14 @@ function prepareHtml(html: string): string {
   return out.join('');
 }
 
+/** Marker the converter puts where it skipped content (never in real mail). */
+const CLIPPED = '\u2063mc-clipped\u2063';
+
 function htmlToText(html: string): string {
   return convert(prepareHtml(html), {
     wordwrap: false,
     // Bounded work and output for hostile HTML (deep nesting, huge fan-out).
-    limits: { maxDepth: 40, maxChildNodes: 5000, maxInputLength: MAX_INPUT },
+    limits: { maxDepth: 40, maxChildNodes: 5000, maxInputLength: MAX_INPUT, ellipsis: CLIPPED },
     selectors: [
       // Keep where a link goes ("my proposal [https://…]"), unless the text is the URL.
       { selector: 'a', options: { hideLinkHrefIfSameAsText: true } },

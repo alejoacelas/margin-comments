@@ -862,10 +862,21 @@ class MarginComments implements Actions {
     this.port
       .call('saveDraft', { draft: entry.draft })
       .then(() => {
+        this.draftFailures = 0;
         if (this.draftTimers.get(slot) === entry) this.draftTimers.delete(slot);
       })
-      .catch(() => this.retryDraftsSoon());
+      .catch(() => {
+        // Keeps retrying; after a few failures in a row, say so (once a minute).
+        if (++this.draftFailures >= 5 && Date.now() - this.draftWarnedAt > 60_000) {
+          this.draftWarnedAt = Date.now();
+          this.toast("Your draft couldn't be saved on this computer. Copy it before closing the tab.");
+        }
+        this.retryDraftsSoon();
+      });
   }
+
+  private draftFailures = 0;
+  private draftWarnedAt = 0;
 
   private retryDraftsSoon() {
     if (this.draftRetry || this.store.state.invalidated) return;

@@ -78,6 +78,23 @@ function rendered(el: Element, cache: VisibilityCache): boolean {
   return shown;
 }
 
+/**
+ * Text in an editor (contenteditable, inherited, plaintext-only): someone's
+ * unsent writing, never page text to quote; our Comment button ignores it too.
+ */
+function editable(node: Node, cache: VisibilityCache): boolean {
+  const el = renderingParent(node, cache);
+  if (!el) return false;
+  for (let e: Element | null = el; e; ) {
+    if ((e as HTMLElement).isContentEditable) return true;
+    const root = e.getRootNode();
+    // An editing host doesn't reach into a component's shadow root, but a
+    // component inside an editor is still part of the editor's content.
+    e = root instanceof ShadowRoot ? root.host : null;
+  }
+  return false;
+}
+
 /** `content-visibility: hidden`: the element's box shows, its contents don't. */
 function contentHidden(el: Element): boolean {
   return (getComputedStyle(el) as CSSStyleDeclaration & { contentVisibility?: string }).contentVisibility === 'hidden';
@@ -172,7 +189,7 @@ export class TextIndex {
     const shownCache = newVisibilityCache();
     const add = (node: Text, skippedTag: boolean) => {
       const data = node.data;
-      const skipped = skippedTag || (data.trim() !== '' && !nodeShown(node, shownCache));
+      const skipped = skippedTag || (data.trim() !== '' && (!nodeShown(node, shownCache) || editable(node, shownCache)));
       this.nodes.push(node);
       this.starts.push(raw);
       this.skipped.push(skipped);

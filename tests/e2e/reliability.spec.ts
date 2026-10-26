@@ -250,3 +250,20 @@ test('unsent drafts never expire', async ({ alice }) => {
   await expect.poll(texts).toEqual(['A new draft', 'Written long ago']);
 });
 
+test("a draft that can't be saved on this computer is flagged, not lost silently", async ({ alice }) => {
+  const a = await alice.open(uniquePath('article'));
+  await alice.signIn(a);
+  // Extension storage starts refusing writes (e.g. the disk is full).
+  await alice.sw.evaluate(() => {
+    (chrome.storage.local as any).set = async () => {
+      throw new Error('QUOTA_BYTES quota exceeded');
+    };
+  });
+  await selectText(a, 'Threads with email replies');
+  await a.locator('[data-testid=adder]').click();
+  await a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]').fill('Text that cannot be stored');
+  await expect(a.locator('[data-testid=toast]')).toContainText("couldn't be saved", { timeout: 15_000 });
+  // The text is still in the editor.
+  await expect(a.frameLocator('iframe[data-testid=composer-input-frame]').locator('[data-testid=composer-input]')).toHaveValue('Text that cannot be stored');
+});
+

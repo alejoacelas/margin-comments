@@ -103,7 +103,7 @@ Reliability was the main goal. Highlights:
   never breaks an anchor. Fuzzy matches must pass a threshold, so a thread is shown as orphaned
   rather than on the wrong sentence. Threads re-anchor on DOM changes (throttled), on late
   renders, infinite scroll, SPA navigation and text inside web components (open shadow roots). On an 18-page corpus of real pages and edited
-  versions, same-page anchoring is 743/743 and text that survives an edit is re-found 478/478
+  versions, same-page anchoring is 743/743 and text that survives an edit is re-found 476/476
   (`tests/anchoring/corpus/README.md`).
 - **No page breakage**: highlights use the CSS Custom Highlight API (no elements are inserted
   into the page), all UI lives in a closed Shadow DOM in the browser's top layer, keyboard and
@@ -114,9 +114,9 @@ Reliability was the main goal. Highlights:
   changes go to a persistent outbox in the extension and are retried until the server accepts
   them (offline, server down, service worker restarted); anything that can't be saved stays
   visible with *Copy text*.
-- **Tests**: 59 end-to-end Playwright tests with the real extension (two users, live sync,
+- **Tests**: 60 end-to-end Playwright tests with the real extension (two users, live sync,
   email notify and reply through a fake Resend, offline, service worker restart, SPAs, CSP,
-  hostile pages, account switching, the closed production build, plain-HTTP and sandboxed pages), 94 server/unit tests, the anchoring corpus plus anchoring
+  hostile pages, account switching, the closed production build, plain-HTTP and sandboxed pages), 97 server/unit tests, the anchoring corpus plus anchoring
   regression and large-page performance tests, and a production smoke test on real sites
   (Wikipedia, GitHub, Hacker News, MDN). Every adversarial review round is logged in
   [`REVIEW.md`](REVIEW.md).

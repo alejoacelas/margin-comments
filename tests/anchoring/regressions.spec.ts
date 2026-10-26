@@ -539,3 +539,20 @@ test('a highlight follows a tab switch made with a custom attribute (no size cha
   await expect.poll(where, { timeout: 10_000 }).toBe('pb');
 });
 
+test("text in an editor next to a selection (someone's unsent draft) stays out of selectors", async ({ page }) => {
+  for (const editor of [
+    '<div contenteditable="true">UNSENT: my medical diagnosis</div>',
+    '<div contenteditable="plaintext-only">UNSENT: my medical diagnosis</div>',
+    '<div contenteditable><p>UNSENT: my <b>medical diagnosis</b></p></div>',
+  ]) {
+    await load(page, `<main><p id="p">An article paragraph to comment on.</p>${editor}</main>`);
+    const json = await page.evaluate(() => {
+      const mc = (window as any).__mc;
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById('p')!);
+      return JSON.stringify(mc.describeRange(document.body, r).selectors);
+    });
+    expect(json, editor).not.toContain('diagnosis');
+  }
+});
+

@@ -412,3 +412,14 @@ Reviewer C found nothing material.
 
 All verified to fail on the previous code.
 
+## Round 33 — full repository (2026-10-26)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **Text in a `contenteditable` editor next to a selection (an unsent rich-text draft) could enter stored context** | Fixed | Editable text is excluded like hidden text. Anchoring regression "text in an editor next to a selection…" |
+| B1 | **Received emails were downloaded whole before any check; a burst of large ones could exhaust the 512 MB server** | Fixed | Responses are read with a 12 MB streaming cap (cancelled beyond it) and at most three inbound fetches run at once (503 beyond, Resend redelivers). `email.test.ts` "ResendProvider size cap" and "only a few inbound emails are fetched at once…" |
+| B2 | HTML replies the converter had to clip (too many children / too deep) were posted in part | Fixed | The converter's skip marker is detected; such replies are refused whole and returned to the verified sender. `email.test.ts` "an HTML reply the converter has to clip is refused whole…" |
+| C1 | Drafts and queued changes could exceed the 10 MB extension storage quota; saves then failed silently | Fixed | `unlimitedStorage` permission; repeated draft-save failures are shown on the page. e2e "a draft that can't be saved on this computer is flagged, not lost silently" |
+
+All verified to fail on the previous code. Corpus: "unchanged" is now 476/476 (two corpus quotes were in editable regions).
+

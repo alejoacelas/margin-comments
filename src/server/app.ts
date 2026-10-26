@@ -509,6 +509,8 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
 
   // ---- inbound email (Resend webhook) ----
 
+  let inboundInFlight = 0;
+
   app.post('/webhooks/resend', { config: { rateLimit: { max: 300, timeWindow: '1 minute' } } }, async (req, reply) => {
     if (!config.email.resendWebhookSecret || !verifySvix(config.email.resendWebhookSecret, req.headers as any, req.rawBody ?? '')) {
       return reply.code(401).send({ error: 'invalid_signature' });
@@ -521,7 +523,11 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
       req.log.warn('inbound email received but the provider cannot fetch it');
       return { ignored: true };
     }
+    // A few fetches at a time (each email is held in memory while parsed);
+    // beyond that Resend is asked to redeliver later.
+    if (inboundInFlight >= 3) return reply.code(503).send({ error: 'busy' });
     let email;
+    inboundInFlight++;
     try {
       email = await provider.getReceived(emailId);
     } catch (err) {
@@ -530,6 +536,8 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
       // acknowledged; anything else gets a 5xx so Resend redelivers later.
       if (err instanceof PermanentEmailError) return { ignored: true, reason: 'fetch_failed' };
       return reply.code(503).send({ error: 'fetch_failed' });
+    } finally {
+      inboundInFlight--;
     }
     const outcome = processInbound(
       {

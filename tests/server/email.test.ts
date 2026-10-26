@@ -247,6 +247,29 @@ describe('extractReply', () => {
   });
 });
 
+describe('ResendProvider size cap', () => {
+  it('refuses a response over the cap without buffering it', async () => {
+    const chunk = new Uint8Array(1024 * 1024).fill(97);
+    let sent = 0;
+    const fake = (async () =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            sent++;
+            if (sent > 40) c.close();
+            else c.enqueue(chunk);
+          },
+        }),
+        { status: 200 },
+      )) as unknown as typeof fetch;
+    const p = new ResendProvider('re_key', 'https://api.resend.test', fake);
+    await expect(p.getReceived!('big')).rejects.toBeInstanceOf(PermanentEmailError);
+    expect(sent).toBeLessThan(20); // stopped reading early
+    const declared = (async () => new Response('x', { status: 200, headers: { 'content-length': String(50 * 1024 * 1024) } })) as unknown as typeof fetch;
+    await expect(new ResendProvider('re_key', 'https://api.resend.test', declared).getReceived!('big')).rejects.toBeInstanceOf(PermanentEmailError);
+  });
+});
+
 describe('ResendProvider failures', () => {
   it('a response whose body fails mid-read is retryable', async () => {
     const fake = (async () =>
@@ -555,6 +578,31 @@ describe('notifications and inbound replies (through the API)', () => {
     expect(r.statusCode).toBeLessThan(300);
     const thread = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(a.token) })).json().thread;
     expect(thread.comments.at(-1).body).toBe('x');
+  });
+
+  it('an HTML reply the converter has to clip is refused whole, not posted in part', async () => {
+    const { b, p } = await setup();
+    t.provider.sent = [];
+    await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'ping' } });
+    await t.queue.tick();
+    const replyTo = t.provider.sent.find(s => s.msg.to === 'alice@example.com')!.msg.replyTo!;
+    const html = '<div>' + '<div>para</div>'.repeat(5100) + '<div>IMPORTANT FINAL PARAGRAPH</div></div>';
+    const res = await deliver(receivedEmail({ id: randomUUID(), from: 'alice@example.com', to: [replyTo], html }));
+    expect(res.json().status).toBe('rejected');
+  });
+
+  it('only a few inbound emails are fetched at once; more are asked to come back later', async () => {
+    const release: Array<() => void> = [];
+    t.provider.getReceived = (id: string) => new Promise(resolve => release.push(() => resolve(receivedEmail({ id, from: 'x@example.com', to: [] }))));
+    const post = (id: string) => {
+      const body = JSON.stringify({ type: 'email.received', created_at: new Date().toISOString(), data: { email_id: id } });
+      return t.app.inject({ method: 'POST', url: '/webhooks/resend', headers: svixHeaders(body), payload: body });
+    };
+    const first = [post('e1'), post('e2'), post('e3')];
+    await new Promise(r => setTimeout(r, 50));
+    expect((await post('e4')).statusCode).toBe(503);
+    release.forEach(r => r());
+    for (const r of await Promise.all(first)) expect(r.statusCode).toBe(200);
   });
 
   it('unsubscribe links are signed and work with one-click POST', async () => {

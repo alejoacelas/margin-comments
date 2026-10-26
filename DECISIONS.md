@@ -26,7 +26,8 @@ Choices made while building this without supervision, with the reasoning.
   and Hypothesis's own context could include an adjacent inline `<script>`'s data.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
   `<script>/<style>/<noscript>/<template>/<textarea>` (a textarea's children are its initial
-  value, not what it shows) and text that isn't rendered (`hidden`, `display:none`,
+  value, not what it shows), text in editors (`contenteditable`: someone's unsent writing; the
+  Comment button ignores editable text too) and text that isn't rendered (`hidden`, `display:none`,
   `visibility:hidden`, `content-visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text
   renders in, i.e. its slot when slotted (for closed web components found through
   `chrome.dom.openOrClosedShadowRoot`; a child no slot shows isn't rendered), looking through
@@ -246,7 +247,11 @@ Choices made while building this without supervision, with the reasoning.
   (the 512 MB server ran out of memory in review). Sizes are measured in bytes, and stored text
   never contains control characters (other than tab/newline), which would defeat the
   accounting. Email replies are read up to 2 MB of text; a longer one is refused as a whole
-  (the verified sender gets it back), never posted in part.
+  (the verified sender gets it back), never posted in part; the same when the HTML converter
+  has to skip content (too deep or too many children). Received emails over 12 MB aren't
+  downloaded, and at most three are fetched at once (Resend redelivers the rest).
+- **Extension storage:** `unlimitedStorage`, so drafts and queued changes never hit the 10 MB
+  quota; if saving a draft keeps failing anyway, the page says so (the text stays in the editor).
 
 ## Groups
 
