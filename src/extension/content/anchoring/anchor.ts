@@ -33,7 +33,39 @@ export type AnchorResult = {
   quoteScore: number;
 };
 
-const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE']);
+// Text that is never page text: code, templates, and a textarea's children
+// (its initial value, not what it shows).
+const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA']);
+
+/**
+ * Is an element's content shown? `checkVisibility` (display:none ancestors,
+ * visibility:hidden, closed <details>, hidden slots), except for
+ * `display:contents` elements (default for <slot>), which have no box of
+ * their own: their rendering parent decides.
+ */
+export function contentShown(el: Element, cache?: Map<Element, boolean>): boolean {
+  const cached = cache?.get(el);
+  if (cached !== undefined) return cached;
+  let shown: boolean;
+  if (typeof el.checkVisibility !== 'function') shown = true;
+  else if (getComputedStyle(el).display === 'contents') {
+    const parent = renderingParent(el);
+    shown = parent ? contentShown(parent, cache) : true;
+  } else {
+    shown = el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: false } as CheckVisibilityOptions);
+  }
+  cache?.set(el, shown);
+  return shown;
+}
+
+/** Where a node renders: its slot if slotted into a web component, else its parent (or shadow host). */
+function renderingParent(node: Node): Element | null {
+  const slot = (node as Element | Text).assignedSlot;
+  if (slot) return slot;
+  if (node.parentElement) return node.parentElement;
+  const root = node.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
+}
 
 export function stripWs(s: string): string {
   return s.replace(/\s+/g, '');
@@ -78,15 +110,8 @@ export class TextIndex {
     // quoted or used as context (selectors are stored and shown to everyone).
     const shownCache = new Map<Element, boolean>();
     const rendered = (node: Text): boolean => {
-      const root = node.getRootNode();
-      const el = node.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
-      if (!el || typeof el.checkVisibility !== 'function') return true;
-      let shown = shownCache.get(el);
-      if (shown === undefined) {
-        shown = el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: false } as CheckVisibilityOptions);
-        shownCache.set(el, shown);
-      }
-      return shown;
+      const el = renderingParent(node);
+      return el ? contentShown(el, shownCache) : true;
     };
     const add = (node: Text, skippedTag: boolean) => {
       const data = node.data;
@@ -615,13 +640,8 @@ export function isVisible(range: Range): boolean {
   }
   if (!boxed) return false;
   for (const node of [range.startContainer, range.endContainer]) {
-    const el = node instanceof Element ? node : node.parentElement;
-    if (!el) continue;
-    if (typeof el.checkVisibility === 'function') {
-      if (!el.checkVisibility({ visibilityProperty: true, contentVisibilityAuto: false } as CheckVisibilityOptions)) return false;
-    } else if (getComputedStyle(el).visibility === 'hidden') {
-      return false;
-    }
+    const el = node instanceof Element ? node : renderingParent(node);
+    if (el && !contentShown(el)) return false;
   }
   return true;
 }

@@ -412,3 +412,31 @@ test('hidden text is never quoted, inside or next to a selection; it anchors aga
   await expect.poll(() => page.evaluate(() => (window as any).__m.get('t').status), { timeout: 15_000 }).toBe('anchored');
 });
 
+test('hidden slots and textarea values stay out of selectors; display:contents text can be commented on', async ({ page }) => {
+  await load(
+    page,
+    `<main><x-tabs>private account info</x-tabs><p id="a">Public article text.</p><textarea id="ta">private diagnosis 1234</textarea><div id="c" style="display:contents">Visible article text to annotate.</div></main>`,
+  );
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    document.querySelector('x-tabs')!.attachShadow({ mode: 'open' }).innerHTML = '<p>Tab header text.</p><slot style="display:none"></slot>';
+    (document.getElementById('ta') as HTMLTextAreaElement).value = '';
+    const describe = (el: Element) => {
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      return mc.describeRange(document.body, r);
+    };
+    const a = describe(document.getElementById('a')!);
+    const c = describe(document.getElementById('c')!);
+    return {
+      a: JSON.stringify(a.selectors),
+      c: c && c.quote,
+      cAnchored: c && mc.anchorSelectors(document.body, c.selectors)?.range.toString(),
+    };
+  });
+  expect(res.a).not.toContain('private account');
+  expect(res.a).not.toContain('private diagnosis');
+  expect(res.c).toBe('Visible article text to annotate.');
+  expect(res.cAnchored).toBe('Visible article text to annotate.');
+});
+

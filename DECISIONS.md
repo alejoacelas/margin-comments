@@ -25,8 +25,10 @@ Choices made while building this without supervision, with the reasoning.
   text our matching uses (script/style excluded): selectors are stored and shown to everyone,
   and Hypothesis's own context could include an adjacent inline `<script>`'s data.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
-  `<script>/<style>/<noscript>/<template>` and text that isn't rendered (`hidden`,
-  `display:none`, `visibility:hidden`), so re-indentation, minification and `<br>`/block
+  `<script>/<style>/<noscript>/<template>/<textarea>` (a textarea's children are its initial
+  value, not what it shows) and text that isn't rendered (`hidden`, `display:none`,
+  `visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text
+  renders in, i.e. its slot when slotted, looking through `display:contents`), so re-indentation, minification and `<br>`/block
   changes never break an anchor, and hidden text never ends up in a stored (shared) quote or
   context. Hidden text still counts in offsets. A thread on text the page later hides (a
   collapsed section) is listed as orphaned until it's shown again; show/hide changes trigger a

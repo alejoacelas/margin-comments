@@ -324,3 +324,15 @@ Reviewers B and C found nothing material.
 |---|---------|---------|------------|
 | A1 | **Hidden page text (`hidden`, `display:none`, `visibility:hidden`) inside or next to a selection was stored in the quote and context, which every user of the page receives** | Fixed | The text index treats non-rendered text like script text: counted in offsets, never matched, quoted or used as context; a saved range with no rendered text doesn't verify; orphans are retried when something is shown or hidden. Corpus unchanged (the harness now measures rendered text the same way). Anchoring regression "hidden text is never quoted, inside or next to a selection; it anchors again once shown" |
 
+## Round 25 — full repository (2026-10-26)
+
+Reviewers B and C found nothing material. All three findings concern round 24's visibility filter.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **Text slotted into a hidden `<slot>` was judged by its (visible) light-DOM parent and could enter stored context** | Fixed | Visibility is judged through the element the text renders in (its assigned slot when slotted) |
+| A2 | **A `<textarea>`'s child text (its initial value, possibly cleared or edited since) could enter stored context** | Fixed | Textarea text is treated like script text (counted in offsets, never quoted) |
+| A3 | Visible text under `display:contents` (no box of its own) was treated as hidden and couldn't be commented on | Fixed | `display:contents` elements defer to their rendering parent; the visible-copy check uses the same rule |
+
+Anchoring regression "hidden slots and textarea values stay out of selectors; display:contents text can be commented on" covers all three; verified to fail on the previous code. Corpus unchanged.
+
