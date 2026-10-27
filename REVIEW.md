@@ -482,3 +482,11 @@ Reviewers B and C found nothing material.
 |---|---------|---------|------------|
 | A1 | Round 37's chunked comparison counted a chunk with no match as only its search budget (30%) changed, so a long passage with 75% rewritten could still anchor (score 0.77) | Fixed | An unmatched chunk counts as entirely changed. Corpus unchanged. Anchoring regression "a long passage whose middle was rewritten is orphaned…" (0.7744 before) |
 
+## Round 39 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | The chunked long-quote comparison only looked 128 characters around each chunk's place, so a paragraph inserted into a long quoted passage misaligned everything after it and the intact passage orphaned | Fixed | A chunk not found near its place is looked for near-exactly (≤10% errors, so look-alike text elsewhere can't capture it) within 2,048 characters, and the shift counts as inserted/removed text. Anchoring regression "a long quote survives a paragraph inserted into or removed from it"; the rewritten-middle regression still orphans; corpus unchanged |
+

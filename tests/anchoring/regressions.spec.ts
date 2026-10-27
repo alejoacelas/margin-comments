@@ -667,3 +667,29 @@ test('a long passage whose middle was rewritten is orphaned, not anchored to the
   }, [original, letters(99, 7680, 'klmnopqrst')] as const);
   expect(result).toBeNull();
 });
+
+test('a long quote survives a paragraph inserted into or removed from it', async ({ page }) => {
+  const words = (seed: number, n: number) => {
+    let x = seed;
+    const w = ['margin', 'reader', 'note', 'quote', 'thread', 'anchor', 'paragraph', 'comment', 'book', 'essay', 'idea', 'page'];
+    return Array.from({ length: n }, () => w[(x = (x * 1103515245 + 12345) % 2147483648) % w.length]).join(' ');
+  };
+  const original = words(5, 2300).slice(0, 13600);
+  const extra = ' ' + words(77, 70).toUpperCase().slice(0, 400) + ' ';
+  for (const edit of ['insert', 'delete'] as const) {
+    await load(page, `<main><p id="p">${original}</p></main>`);
+    const res = await page.evaluate(([original, extra, edit]) => {
+      const mc = (window as any).__mc;
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById('p')!);
+      const { selectors } = mc.describeRange(document.body, r);
+      const at = Math.floor(original.length * 0.3);
+      document.getElementById('p')!.textContent = edit === 'insert' ? original.slice(0, at) + extra + original.slice(at) : original.slice(0, at) + original.slice(at + 400);
+      const out = mc.anchorSelectors(document.body, selectors);
+      return out && out.quoteScore;
+    }, [original, extra, edit] as const);
+    expect(res, edit).not.toBeNull();
+    expect(res!, edit).toBeGreaterThan(0.9);
+  }
+});
+

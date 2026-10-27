@@ -62,7 +62,9 @@ Choices made while building this without supervision, with the reasoning.
   upgraded if the exact text appears later. Orphans always stay listed in the sidebar.
 - **Very long quotes** (> 1000 chars without an exact match) are matched by head and tail to
   bound the cost, and the span between is compared in 256-character chunks (each a bounded
-  edit distance near its expected place), so a 50,000-character quote costs milliseconds.
+  edit distance near its expected place; a chunk not found there is looked for, near-exactly,
+  within 2,048 characters, so an inserted or removed paragraph costs only its own length), so a
+  50,000-character quote costs milliseconds.
 - **Exact text elsewhere vs. the edited passage:** Hypothesis takes any exact occurrence over a
   near match. When the only exact copy sits in mostly different surroundings (context < 50%) and
   a near match (≥ 85% of the quote, ≥ 20 chars) sits in the original surroundings (≥ 95% both

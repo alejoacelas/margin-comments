@@ -783,20 +783,38 @@ function spanSimilarity(span: string, q: string): number {
     return Math.max(0, 1 - errors / q.length);
   }
   const SLACK = 128;
+  // After an inserted or deleted paragraph the next chunks sit further away:
+  // when a chunk isn't near its place, look this far around it (still bounded).
+  const RESYNC = 2048;
   let errors = 0;
   let from = 0;
+  const find = (chunk: string, slack: number, share: number) => {
+    const budget = Math.ceil(chunk.length * share);
+    const windowStart = Math.max(0, from - slack);
+    const m = approxSearch(span.slice(windowStart, from + chunk.length + slack), chunk, budget);
+    if (!m.length) return null;
+    // Fewest errors; among equals (repetitive text), the one ending nearest
+    // where it should, so the alignment doesn't drift.
+    const expected = from + chunk.length - windowStart;
+    const best = m.reduce((a, b) => (b.errors < a.errors || (b.errors === a.errors && Math.abs(b.end - expected) < Math.abs(a.end - expected)) ? b : a));
+    return { errors: best.errors, end: windowStart + best.end };
+  };
   for (let i = 0; i < q.length; i += CHUNK) {
     const chunk = q.slice(i, i + CHUNK);
-    const budget = Math.ceil(chunk.length * 0.3);
-    const windowStart = Math.max(0, from - SLACK);
-    const m = approxSearch(span.slice(windowStart, from + chunk.length + SLACK), chunk, budget);
-    if (m.length) {
-      // Fewest errors; among equals (repetitive text), the one ending nearest
-      // where it should, so the alignment doesn't drift.
-      const expected = from + chunk.length - windowStart;
-      const best = m.reduce((a, b) => (b.errors < a.errors || (b.errors === a.errors && Math.abs(b.end - expected) < Math.abs(a.end - expected)) ? b : a));
-      errors += best.errors;
-      from = windowStart + best.end;
+    const near = find(chunk, SLACK, 0.3);
+    if (near) {
+      errors += near.errors;
+      from = near.end;
+      continue;
+    }
+    // Far from its place, only a near-exact match counts (similar-looking
+    // text elsewhere mustn't pull the alignment away).
+    const far = find(chunk, RESYNC, 0.1);
+    if (far) {
+      // Found after a gap: the text inserted (or deleted) in between counts.
+      const shift = Math.abs(far.end - (from + chunk.length));
+      errors += far.errors + shift;
+      from = far.end;
     } else {
       errors += chunk.length; // nothing like it here: the whole chunk counts as changed
       from += chunk.length;
