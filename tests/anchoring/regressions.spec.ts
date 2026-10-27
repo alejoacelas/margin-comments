@@ -740,3 +740,52 @@ test("a thread on a repeated cell follows its row when a table is re-sorted in p
   await expect.poll(where, { timeout: 10_000 }).toBe('s2');
 });
 
+test("a thread on a repeated cell is orphaned when its row's details are replaced", async ({ page }) => {
+  const rows = ['Alice Johnson invoice 1042', 'Oliver Smith invoice 2077', 'Maria Lopez invoice 3150', 'Kenji Sato invoice 4411'];
+  await load(page, `<table>${rows.map((n, i) => `<tr><td id="n${i}">${n}</td><td id="s${i}">Pending approval</td></tr>`).join('')}</table>`);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('s1')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 10_000 }).toBe('anchored');
+  // The next page of results: every record replaced, statuses the same.
+  await page.evaluate(() => ['Zed Park invoice 9001', 'Yara Nunez invoice 9002', 'Xavi Ortiz invoice 9003', 'Wen Qiu invoice 9004'].forEach((n, i) => (document.getElementById(`n${i}`)!.textContent = n)));
+  await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
+});
+
+test('after one change, re-checking many repeated-quote threads finishes (no endless passes)', async ({ page }) => {
+  await load(page, `<table>${Array.from({ length: 300 }, (_, i) => `<tr><td id="n${i}">Customer ${i} account ${1000 + i}</td><td>Pending approval</td></tr>`).join('')}</table>`);
+  const runs = await page.evaluate(async () => {
+    const mc = (window as any).__mc;
+    const cells = [...document.querySelectorAll('td:nth-child(2)')].slice(0, 20);
+    const threads = cells.map((c, i) => {
+      const r = document.createRange();
+      r.selectNodeContents(c);
+      return { id: `t${i}`, selectors: mc.describeRange(document.body, r).selectors };
+    });
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    let count = 0;
+    const run = m.run.bind(m);
+    m.run = () => {
+      count++;
+      run();
+    };
+    m.start();
+    m.setThreads(threads);
+    await new Promise(r => setTimeout(r, 3000));
+    document.getElementById('n150')!.textContent = 'Customer changed';
+    await new Promise(r => setTimeout(r, 4000));
+    const before = count;
+    await new Promise(r => setTimeout(r, 4000));
+    return count - before;
+  });
+  expect(runs).toBeLessThanOrEqual(1);
+});
+

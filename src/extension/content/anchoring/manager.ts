@@ -46,6 +46,8 @@ export class AnchorManager {
   private observer: MutationObserver | null = null;
   /** Where the next pass starts (after a pass that ran out of time). */
   private cursor = 0;
+  /** What a cut-short pass still has to do: its signals and how many entries are left. */
+  private carry: { text: boolean; layout: boolean; remaining: number } | null = null;
   /** Web components' shadow roots being watched (the document observer can't see into them). */
   private observedRoots = new WeakSet<ShadowRoot>();
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -201,9 +203,14 @@ export class AnchorManager {
     const root = this.getRoot();
     if (!root) return;
 
-    const textChanged = this.dirty;
+    // A pass cut short continues with the entries it didn't reach and the
+    // signals it had; anything new since starts a fresh full pass.
+    const fresh = this.dirty || this.layoutDirty || !this.carry;
+    const textChanged = this.dirty || (!!this.carry && this.carry.text);
+    const layoutChanged = this.layoutDirty || (!!this.carry && this.carry.layout);
+    const carried = fresh ? null : this.carry;
+    this.carry = null;
     this.dirty = false;
-    const layoutChanged = this.layoutDirty;
     this.layoutDirty = false;
     const settled = now - this.textChangedAt >= SETTLE_MS;
 
@@ -218,14 +225,16 @@ export class AnchorManager {
     // Resume where the last (cut-short) pass stopped, so threads late in the
     // list aren't starved by the ones before them.
     const list = [...this.entries.values()];
-    const start = list.length ? this.cursor % list.length : 0;
+    const start = carried && list.length ? this.cursor % list.length : 0;
+    const count = carried ? Math.min(carried.remaining, list.length) : list.length;
     this.cursor = 0;
 
-    for (let k = 0; k < list.length; k++) {
+    for (let k = 0; k < count; k++) {
       const e = list[(start + k) % list.length];
       if (k > 0 && performance.now() > deadline) {
         unfinished = true;
         this.cursor = (start + k) % list.length;
+        this.carry = { text: textChanged, layout: layoutChanged, remaining: count - k };
         break;
       }
       if (e.state.status === 'anchored') {
@@ -290,6 +299,14 @@ export class AnchorManager {
                 e.state = { status: 'anchored', range: alt.range, fuzzy: alt.quoteScore < 1 };
                 e.anchoredText = stripWs(alt.range.toString());
                 changed = true;
+              } else if (!alt) {
+                // Its surroundings are gone (e.g. the table now shows other
+                // records): an orphan until they come back.
+                e.state = { status: 'orphan' };
+                e.tries = 1;
+                e.nextTry = now + 2000;
+                e.failedAtLength = 0;
+                changed = true;
               }
             } catch {
               // keep the current anchor
@@ -346,12 +363,7 @@ export class AnchorManager {
     if (nextRetry !== Infinity) this.schedule(Math.max(0, nextRetry - now));
     const built = index as TextIndex | null;
     if (built) this.observeShadowRoots(built);
-    if (unfinished) {
-      // The rest still needs this pass's signals.
-      this.dirty ||= textChanged;
-      this.layoutDirty ||= layoutChanged;
-      this.schedule(0);
-    }
+    if (unfinished) this.schedule(0);
     if (changed) this.onChange();
     this.onLayout();
   }

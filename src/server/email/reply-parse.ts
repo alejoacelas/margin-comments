@@ -103,15 +103,16 @@ const HTML_HISTORY_MARKERS: RegExp[] = [
  * the converter lift its content out of the quote. (Whole-document regexes
  * here were quadratic on malformed HTML.)
  */
+const RAW_TEXT = new Set(['script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes', 'noscript']);
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 
 function prepareHtml(html: string): { html: string; clipped: boolean } {
   const out: string[] = [];
   let inHead = false;
-  // Quote nesting beyond a few levels is dropped (its text stays): each level
-  // prefixes every line below it, so deep nesting multiplies the output.
+  // One level of quoting is all the text rules need (a quoted line is
+  // dropped either way); deeper levels would prefix every line again.
   let quoteDepth = 0;
-  const MAX_QUOTE_DEPTH = 8;
+  const MAX_QUOTE_DEPTH = 1;
   // Element nesting beyond this is flattened (tags dropped, text kept): the
   // converter builds the whole tree first, and very deep trees cost it
   // quadratic time. A mail with this many tags isn't converted at all.
@@ -122,6 +123,7 @@ function prepareHtml(html: string): { html: string; clipped: boolean } {
   const MAX_DEPTH = 32;
   let tags = 0;
   const MAX_TAGS = 50_000;
+  const lower = html.toLowerCase();
   let i = 0;
   while (i < html.length) {
     const lt = html.indexOf('<', i);
@@ -130,6 +132,13 @@ function prepareHtml(html: string): { html: string; clipped: boolean } {
       break;
     }
     if (!inHead) out.push(html.slice(i, lt));
+    // Comments end at "-->", not the first ">" (tags inside them aren't tags).
+    if (html.startsWith('<!--', lt)) {
+      const end = html.indexOf('-->', lt + 4);
+      if (end < 0) break;
+      i = end + 3;
+      continue;
+    }
     const gt = html.indexOf('>', lt + 1);
     if (gt < 0) {
       if (!inHead) out.push(html.slice(lt));
@@ -140,6 +149,14 @@ function prepareHtml(html: string): { html: string; clipped: boolean } {
     if (++tags > MAX_TAGS) return { html: '', clipped: true };
     const name = /^<\/?\s*([!a-z][a-z0-9-]*)/i.exec(tag)?.[1]?.toLowerCase();
     const closing = tag[1] === '/';
+    // Raw-text elements: their content isn't markup (and isn't reply text).
+    if (!closing && name && RAW_TEXT.has(name)) {
+      const end = lower.indexOf(`</${name}`, gt + 1);
+      if (end < 0) break;
+      const close = html.indexOf('>', end);
+      i = close < 0 ? html.length : close + 1;
+      continue;
+    }
     // Nesting of ordinary elements (not void, self-closing, comments or doctype).
     const nests = !!name && name[0] !== '!' && !VOID_TAGS.has(name) && !tag.endsWith('/>');
     if (nests && name !== 'head' && name !== 'html' && name !== 'body' && name !== 'blockquote') {

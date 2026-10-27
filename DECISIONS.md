@@ -59,7 +59,9 @@ Choices made while building this without supervision, with the reasoning.
   none is starved.
 - **Repeated quotes are re-checked when the page text changes:** an anchored thread whose quote
   occurs more than once is matched again by context, so it follows its row when a table is
-  re-sorted in place (frameworks reuse the row nodes and rewrite their cells).
+  re-sorted in place (frameworks reuse the row nodes and rewrite their cells), and becomes an
+  orphan when its surroundings are gone. A pass cut short by its time budget continues with
+  only the entries it didn't reach.
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
   context; short exact strings need context unless they're unique on the page; matches are only
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is
@@ -270,7 +272,9 @@ Choices made while building this without supervision, with the reasoning.
   (the verified sender gets it back), never posted in part; the same when the HTML converter
   has to skip content (too deep or too many children). Before conversion, one linear pass
   flattens element nesting beyond 32 levels (text kept; counted over matched elements only,
-  unmatched closing tags are dropped); lists and tables convert as plain blocks (numbering,
+  unmatched closing tags are dropped; comments and raw-text elements are skipped as the parser
+  does; quoting is kept to one level, all the text rules need); lists and tables convert as
+  plain blocks (numbering,
   indentation and cell padding repeat per line and could multiply a crafted email) and refuses mails with over 50,000 tags:
   the converter builds the whole tree first and is quadratic on very deep ones. Received emails over 12 MB aren't
   downloaded, and at most three are fetched at once (Resend redelivers the rest). A returned

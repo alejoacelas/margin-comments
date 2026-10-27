@@ -509,3 +509,15 @@ Reviewer C found nothing material.
 
 Both verified to fail on the previous code.
 
+## Round 42 — full repository (2026-10-27)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | When re-checking a repeated quote found no acceptable match (the row's details were replaced), the old anchor was kept | Fixed | It becomes an orphan (retried as usual). Anchoring regression "a thread on a repeated cell is orphaned when its row's details are replaced" |
+| A2 | Time-sliced passes carried their change signal and re-walked the whole list, so heavy re-checks could loop forever after one change | Fixed | A continuation processes only the entries the cut-short pass didn't reach; new changes start a fresh pass. Anchoring regression "after one change, re-checking many repeated-quote threads finishes" (10 passes in an idle 4 s before) |
+| B1 | **The HTML pre-pass ended comments at the first `>`, so tags inside comments (and raw-text elements) were counted and real quote nesting exceeded the cap (~524 MB)** | Fixed | Comments and raw-text elements are skipped as the parser does; quoting is kept to one level. `email.test.ts` "comments and raw-text elements cannot hide tags from the nesting bound" |
+
+All verified to fail on the previous code.
+

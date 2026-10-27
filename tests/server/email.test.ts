@@ -267,6 +267,21 @@ describe('extractReply', () => {
     expect(process.memoryUsage().rss - before).toBeLessThan(300 * 1024 * 1024);
     expect(out.text.length).toBeLessThan(2_100_000);
   });
+  it('comments and raw-text elements cannot hide tags from the nesting bound', async () => {
+    const { extractReplyChecked } = await import('../../src/server/email/reply-parse');
+    for (const html of [
+      '<blockquote><!-- > </blockquote> -->'.repeat(40) + '<pre>' + 'x\n'.repeat(400000) + '</pre>',
+      '<blockquote><title></blockquote></title>'.repeat(40) + '<pre>' + 'x\n'.repeat(400000) + '</pre>',
+      '<title>a</title>'.repeat(30000) + 'answer',
+    ]) {
+      const t0 = performance.now();
+      const before = process.memoryUsage().rss;
+      const out = extractReplyChecked(null, html);
+      expect(performance.now() - t0, html.slice(0, 20)).toBeLessThan(3000);
+      expect(process.memoryUsage().rss - before, html.slice(0, 20)).toBeLessThan(250 * 1024 * 1024);
+      expect(out.text.length).toBeLessThan(2_100_000);
+    }
+  });
   it('keeps text below separator lines', () => {
     expect(extractReply('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.', null)).toBe('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.');
     expect(extractReply('Two options:\n===\nA or B.\n\nOn Mon, Bob wrote:\n> which?', null)).toBe('Two options:\n===\nA or B.');
