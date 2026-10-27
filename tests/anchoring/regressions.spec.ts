@@ -919,3 +919,61 @@ test('on a page that never stops changing, every thread still gets anchored', as
   await expect.poll(statuses, { timeout: 15_000 }).toBe(Array(13).fill('anchored').join(','));
 });
 
+const INVOICES = `<table><tr><td id="n0">INV-1001 Alice Smith $120.00</td><td id="s0">Paid</td></tr><tr><td id="n1">INV-2057 Bob Jones $75.50</td><td id="s1">Paid</td></tr></table><p>End of the invoice list.</p>`;
+
+test('a short quote is not anchored by its saved position alone when its surroundings are another record', async ({ page }) => {
+  await load(page, INVOICES);
+  const selectors = await page.evaluate(() => {
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('s0')!);
+    return (window as any).__mc.describeRange(document.body, r).selectors;
+  });
+  // Later: Alice's invoice is gone and Bob's is in the first row.
+  await load(page, `<table><tr><td id="n0">INV-2057 Bob Jones $75.50</td><td id="s0">Paid</td></tr></table><p>End of the invoice list.</p>`);
+  const res = await page.evaluate(sel => !!(window as any).__mc.anchorSelectors(document.body, sel), selectors);
+  expect(res).toBe(false);
+});
+
+test('a short quote is orphaned when its row is reused for another record', async ({ page }) => {
+  await load(page, INVOICES);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('s0')!);
+    const { selectors, range } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.seed('t', selectors, range);
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 10_000 }).toBe('anchored');
+  // Alice's record is removed; the framework reuses her row for Bob's.
+  await page.evaluate(() => {
+    document.getElementById('n0')!.textContent = 'INV-2057 Bob Jones $75.50';
+    document.getElementById('n1')!.closest('tr')!.remove();
+  });
+  await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
+});
+
+test('a short quote stays anchored while unrelated text changes', async ({ page }) => {
+  await load(page, INVOICES + '<p id="clock">0</p>');
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('s0')!);
+    const { selectors, range } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.seed('t', selectors, range);
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const where = () => page.evaluate(() => ((window as any).__m.get('t').range?.startContainer.parentElement as HTMLElement | undefined)?.id ?? null);
+  await expect.poll(where, { timeout: 10_000 }).toBe('s0');
+  await page.evaluate(() => (document.getElementById('clock')!.textContent = '1'));
+  await page.waitForTimeout(1500);
+  expect(await where()).toBe('s0');
+});
+

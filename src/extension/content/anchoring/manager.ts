@@ -1,5 +1,5 @@
 import type { Selector, TextQuoteSelector } from '../../../shared/types';
-import { anchorSelectors, isVisible, stripWs, TextIndex } from './anchor';
+import { anchorSelectors, isVisible, selfEvident, stripWs, TextIndex } from './anchor';
 
 export type AnchorState =
   | { status: 'anchored'; range: Range; fuzzy: boolean }
@@ -322,11 +322,13 @@ export class AnchorManager {
         }
         // A repeated quote whose surroundings changed (e.g. a sorted table
         // reusing its row nodes): the anchored copy may no longer be the
-        // thread's one. Context decides, as when anchoring afresh.
+        // thread's one. Likewise a quote too short to stand on its own ("Paid"
+        // in a row reused for another record). Context decides, as when
+        // anchoring afresh.
         if (stillValid && !upgrade && textChanged && e.exactStripped) {
           const text = getIndex().text;
           const first = text.indexOf(e.exactStripped);
-          if (first >= 0 && text.indexOf(e.exactStripped, first + 1) >= 0) {
+          if (first >= 0 && (!selfEvident(e.exactStripped) || text.indexOf(e.exactStripped, first + 1) >= 0)) {
             try {
               const alt = anchorSelectors(root, e.selectors, { index: getIndex() });
               if (alt && !sameRange(alt.range, e.state.range)) {

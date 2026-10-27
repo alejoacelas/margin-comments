@@ -569,3 +569,11 @@ Reviewers B and C found nothing material.
 | # | Finding | Verdict | Fix / test |
 |---|---------|---------|------------|
 | A1 | On a page that never stops changing (a live counter), every mutation restarted the cut-short pass at the first entry, so threads late in the list stayed pending forever | Fixed | A pass started by new changes is a full pass that begins where the last one stopped (with the signals it carried), so every entry gets its turn. Anchoring regression "on a page that never stops changing, every thread still gets anchored" (8 of 13 threads still pending after 15 s before) |
+
+## Round 48 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | A short quote ("Paid") stayed on, or on reload re-attached to, a table row reused for another record: the saved range/position were trusted for any unique quote, and live context re-checks ran only for repeated quotes, while quote matching itself requires context for unique quotes under 8 characters | Fixed | One rule everywhere: quotes under 8 characters are never identified by uniqueness alone, so the saved range/position aren't used for them and they're re-checked by context on text changes. Anchoring regressions "a short quote is not anchored by its saved position alone…" and "a short quote is orphaned when its row is reused…" (both fail on the previous code), plus "a short quote stays anchored while unrelated text changes" |

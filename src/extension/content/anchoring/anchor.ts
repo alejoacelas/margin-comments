@@ -605,8 +605,10 @@ export function anchorSelectors(
   // The saved range/position are only trusted when the quote is unique on
   // the page: with repeats, content inserted above can shift them onto a
   // different occurrence, and only context matching picks the right one.
+  // Nor for quotes too short to identify a passage by themselves ("Paid" in
+  // a row now showing another record): those need their context, as below.
   const first = index.text.indexOf(exactStripped);
-  const unique = first >= 0 && index.text.indexOf(exactStripped, first + 1) < 0;
+  const unique = first >= 0 && index.text.indexOf(exactStripped, first + 1) < 0 && selfEvident(exactStripped);
 
   let shortcut: AnchorResult | null = null;
   if (rangeSel && unique) {
@@ -712,6 +714,14 @@ function matchQuoteInIndex(
   };
 }
 
+/** Whitespace-free length from which a quote that is unique on the page identifies its passage without context. */
+const SELF_EVIDENT_QUOTE = 8;
+
+/** Does this (whitespace-free) quote, when unique on the page, identify its passage by itself? */
+export function selfEvident(exactStripped: string): boolean {
+  return exactStripped.length >= SELF_EVIDENT_QUOTE;
+}
+
 /**
  * Decide whether the best match is good enough to highlight. When in doubt,
  * orphan: a thread in the sidebar beats a thread on the wrong sentence.
@@ -721,7 +731,7 @@ export function acceptable(c: Candidate, quoteLength: number, hasContext: boolea
   if (c.quoteScore === 1) {
     // The only exact occurrence on the page is strong evidence by itself
     // (also for CJK, where a few characters are a whole phrase).
-    if (uniqueExact && quoteLength >= 8) return true;
+    if (uniqueExact && quoteLength >= SELF_EVIDENT_QUOTE) return true;
     // Short exact strings ("the", "Introduction") recur; demand some context.
     if (quoteLength < 20) return context >= 0.6;
     if (quoteLength < 60) return context >= 0.35;

@@ -65,7 +65,10 @@ Choices made while building this without supervision, with the reasoning.
   orphan when its surroundings are gone. A pass cut short by its time budget continues with
   only the entries it didn't reach.
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
-  context; short exact strings need context unless they're unique on the page; matches are only
+  context; short exact strings need context unless they're unique on the page and at least 8
+  characters (shorter ones, like "Paid" in a table, need context even when unique: the saved
+  range and position aren't trusted for them, and they're re-checked when the page text
+  changes, so a reused row showing another record orphans them); matches are only
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is
   upgraded if the exact text appears later. Orphans always stay listed in the sidebar.
 - **Very long quotes** (> 1000 chars without an exact match) are matched by head and tail to
