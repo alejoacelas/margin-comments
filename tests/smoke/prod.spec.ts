@@ -213,7 +213,19 @@ test('production: the shipped dist/ (closed shadow root) comments on Wikipedia w
     });
     await page.waitForTimeout(600);
     await page.mouse.click(chip.x, chip.y);
-    await page.waitForTimeout(500);
+    // Type once the composer's field (an extension frame) has focus.
+    await expect
+      .poll(
+        async () => {
+          for (const f of page.frames()) {
+            if (!f.url().includes('/input.html')) continue;
+            if (await f.evaluate(() => document.hasFocus()).catch(() => false)) return true;
+          }
+          return false;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
     const body = `Shipped build smoke ${Date.now()}`;
     await page.keyboard.type(body);
     await page.keyboard.press('Enter');
