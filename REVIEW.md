@@ -596,3 +596,9 @@ Reviewer B found nothing material.
 | C1 | Cancel discarded the editor's `initial` prop, which follows the stored draft: after another tab extended the draft and closed, Cancel in an untouched tab deleted that extended text it never showed | Fixed | The editor keeps the text it opened with and discards only that and what it holds now. E2E "cancelling a restored draft doesn't delete the longer version another (closed) tab saved" |
 
 Both verified to fail on the previous code.
+
+## Round 51 — full repository (2026-10-27)
+
+All three reviewers (A: anchoring, highlights, content script and UI; B: backend, auth and
+email; C: reliability, sync, extension security and completeness) found nothing material.
+This is the stopping point the brief asks for: a full round with no material findings.

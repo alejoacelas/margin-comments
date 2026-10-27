@@ -119,7 +119,7 @@ Reliability was the main goal. Highlights:
   hostile pages, account switching, the closed production build, plain-HTTP and sandboxed pages), 106 server/unit tests, the anchoring corpus plus anchoring
   regression and large-page performance tests, and a production smoke test on real sites
   (Wikipedia, GitHub, Hacker News, MDN). Every adversarial review round is logged in
-  [`REVIEW.md`](REVIEW.md).
+  [`REVIEW.md`](REVIEW.md); the 51st full Codex round found nothing material.
 
 ## Development
 
