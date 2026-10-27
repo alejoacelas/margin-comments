@@ -789,3 +789,25 @@ test('after one change, re-checking many repeated-quote threads finishes (no end
   expect(runs).toBeLessThanOrEqual(1);
 });
 
+test('a thread whose passage loses its middle to a collapsed section stops being anchored', async ({ page }) => {
+  const middle = Array.from({ length: 30 }, (_, i) => `Detail sentence ${i} inside the collapsible section.`).join(' ');
+  await load(page, `<main><p id="a">Beginning.</p><details id="d" open><summary>More</summary><p>${middle}</p></details><p id="b">Conclusion.</p></main>`);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.setStart(document.getElementById('a')!.firstChild!, 0);
+    r.setEnd(document.getElementById('b')!.firstChild!, 11);
+    const { selectors } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 10_000 }).toBe('anchored');
+  await page.evaluate(() => ((document.getElementById('d') as HTMLDetailsElement).open = false));
+  await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
+  await page.evaluate(() => ((document.getElementById('d') as HTMLDetailsElement).open = true));
+  await expect.poll(status, { timeout: 15_000 }).toBe('anchored');
+});
+

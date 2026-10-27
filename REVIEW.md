@@ -526,3 +526,11 @@ HTML-only replies are now read only up to 200 KB (refused whole above that, retu
 verified sender with a note to send plain text); plain text is still read up to 2 MB by our own
 linear rules. `email.test.ts` "an HTML-only reply over 200 KB is refused whole".
 
+## Round 43 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | A passage whose middle was collapsed (ends still visible) stayed "anchored" on the remaining fragments: validity compared raw text, which includes hidden parts | Fixed | After show/hide changes (rate-limited to every 2 s), each anchor's rendered-character count (two index lookups) is compared with its count when anchored; a change re-anchors or orphans. Anchoring regression "a thread whose passage loses its middle to a collapsed section stops being anchored"; verified to fail without the fix |
+

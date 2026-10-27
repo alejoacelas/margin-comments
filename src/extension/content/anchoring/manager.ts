@@ -13,6 +13,8 @@ type Entry = {
   state: AnchorState;
   /** Whitespace-free text the range covered when anchored (validity check). */
   anchoredText: string;
+  /** How many of its characters were rendered (hidden parts excluded); null until measured. */
+  anchoredRendered: number | null;
   createdAt: number;
   tries: number;
   nextTry: number;
@@ -46,6 +48,8 @@ export class AnchorManager {
   private observer: MutationObserver | null = null;
   /** Where the next pass starts (after a pass that ran out of time). */
   private cursor = 0;
+  private lastRenderedCheck = 0;
+  private renderedCheckDue = false;
   /** What a cut-short pass still has to do: its signals and how many entries are left. */
   private carry: { text: boolean; layout: boolean; remaining: number } | null = null;
   /** Web components' shadow roots being watched (the document observer can't see into them). */
@@ -114,6 +118,7 @@ export class AnchorManager {
       exactStripped,
       state,
       anchoredText: state.status === 'anchored' ? exactStripped : '',
+      anchoredRendered: null,
       createdAt: Date.now(),
       tries: 0,
       nextTry: 0,
@@ -220,6 +225,19 @@ export class AnchorManager {
     let waiting = false;
     // A pass yields after a short time budget and continues on the next one,
     // so many (or expensive) threads never freeze the page.
+    // Rendered-text checks need a text index: at most every 2 s.
+    let renderedCheck = false;
+    if (layoutChanged || this.renderedCheckDue) {
+      const wait = 2000 - (now - this.lastRenderedCheck);
+      if (wait <= 0) {
+        renderedCheck = true;
+        this.lastRenderedCheck = now;
+        this.renderedCheckDue = false;
+      } else {
+        this.renderedCheckDue = true;
+        this.schedule(wait);
+      }
+    }
     const deadline = performance.now() + PASS_BUDGET_MS;
     let unfinished = false;
     // Resume where the last (cut-short) pass stopped, so threads late in the
@@ -238,7 +256,14 @@ export class AnchorManager {
         break;
       }
       if (e.state.status === 'anchored') {
-        const stillValid = this.valid(e, e.state.range);
+        let stillValid = this.valid(e, e.state.range);
+        // Something was shown or hidden: part of the passage may now be hidden
+        // while its ends (and its raw text) are unchanged. Compare what's rendered.
+        if (stillValid && renderedCheck) {
+          const rendered = renderedOf(getIndex(), e.state.range);
+          if (e.anchoredRendered === null) e.anchoredRendered = rendered;
+          else if (rendered !== e.anchoredRendered) stillValid = false;
+        }
         // A fuzzy anchor is upgraded once the exact text appears (checked at
         // most every 2 s, since it needs a full text index).
         let upgrade = false;
@@ -271,6 +296,7 @@ export class AnchorManager {
             if (alt && isVisible(alt.range)) {
               e.state = { status: 'anchored', range: alt.range, fuzzy: alt.quoteScore < 1 };
               e.anchoredText = stripWs(alt.range.toString());
+              e.anchoredRendered = renderedOf(getIndex(), alt.range);
               changed = true;
             } else if (!alt) {
               // Hidden with no shown copy (e.g. a collapsed section): listed as
@@ -298,6 +324,7 @@ export class AnchorManager {
               if (alt && !sameRange(alt.range, e.state.range)) {
                 e.state = { status: 'anchored', range: alt.range, fuzzy: alt.quoteScore < 1 };
                 e.anchoredText = stripWs(alt.range.toString());
+                e.anchoredRendered = renderedOf(getIndex(), alt.range);
                 changed = true;
               } else if (!alt) {
                 // Its surroundings are gone (e.g. the table now shows other
@@ -344,6 +371,7 @@ export class AnchorManager {
       if (result) {
         e.state = { status: 'anchored', range: result.range, fuzzy };
         e.anchoredText = stripWs(result.range.toString());
+        e.anchoredRendered = renderedOf(getIndex(), result.range);
         e.tries = 0;
         changed = true;
       } else {
@@ -372,6 +400,11 @@ export class AnchorManager {
 // Every attribute: pages show and hide content through any of them (class,
 // style, hidden, open, but also data-* / aria-* matched by their CSS). Passes
 // are throttled, so busy attributes only cost a flag.
+/** How many of a range's characters are rendered (hidden parts excluded). */
+function renderedOf(index: TextIndex, range: Range): number {
+  return index.renderedCount(range);
+}
+
 function sameRange(a: Range, b: Range): boolean {
   return a.startContainer === b.startContainer && a.startOffset === b.startOffset && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
 }

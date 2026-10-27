@@ -41,7 +41,9 @@ Choices made while building this without supervision, with the reasoning.
   changes never break an anchor, and hidden text never ends up in a stored (shared) quote or
   context. Hidden text still counts in offsets. A thread on text the page later hides (a
   collapsed section) is listed as orphaned until it's shown again; show/hide changes trigger a
-  retry.
+  retry. That includes a passage whose middle gets hidden while its ends stay visible: after
+  show/hide changes (at most every 2 s) each anchor's count of rendered characters is compared
+  with what it had.
 - **Web components:** the text index walks the page as rendered: open shadow roots in place of
   their host's children, slots showing what's assigned to them (closed roots can't be read, by
   design). Selections inside a component come from `getComposedRanges`, their selectors are

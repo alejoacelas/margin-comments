@@ -387,6 +387,17 @@ export class TextIndex {
     return [this.rawOffsets[first], this.rawOffsets[last] + 1];
   }
 
+  /**
+   * How many rendered (non-space, not hidden) characters a DOM range covers;
+   * -1 if its ends aren't in walked text. Cheap: two lookups.
+   */
+  renderedCount(range: Range): number {
+    const a = this.rawOffsetOfBoundary(range.startContainer, range.startOffset, true);
+    const b = this.rawOffsetOfBoundary(range.endContainer, range.endOffset, false);
+    if (a === null || b === null) return -1;
+    return Math.max(0, this.fromRaw(b) - this.fromRaw(a));
+  }
+
   /** Like rawOffsetOf, also for a boundary between nodes (an element or shadow root container). */
   private rawOffsetOfBoundary(container: Node, offset: number, forward: boolean): number | null {
     if (container.nodeType === Node.TEXT_NODE) return this.rawOffsetOf(container, offset);
