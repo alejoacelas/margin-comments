@@ -534,3 +534,11 @@ Reviewers B and C found nothing material.
 |---|---------|---------|------------|
 | A1 | A passage whose middle was collapsed (ends still visible) stayed "anchored" on the remaining fragments: validity compared raw text, which includes hidden parts | Fixed | After show/hide changes (rate-limited to every 2 s), each anchor's rendered-character count (two index lookups) is compared with its count when anchored; a change re-anchors or orphans. Anchoring regression "a thread whose passage loses its middle to a collapsed section stops being anchored"; verified to fail without the fix |
 
+## Round 44 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Threads created on the page (seeded with their range) had no rendered-extent baseline, so a collapse before the first check became the baseline | Fixed | Seeding measures the baseline. The collapse regression now seeds the thread as creation does; verified to fail without the fix |
+

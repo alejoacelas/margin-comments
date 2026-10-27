@@ -797,9 +797,11 @@ test('a thread whose passage loses its middle to a collapsed section stops being
     const r = document.createRange();
     r.setStart(document.getElementById('a')!.firstChild!, 0);
     r.setEnd(document.getElementById('b')!.firstChild!, 11);
-    const { selectors } = mc.describeRange(document.body, r);
+    const { selectors, range } = mc.describeRange(document.body, r);
     const m = new mc.AnchorManager(() => document.body, () => false, () => {});
     m.start();
+    // As when a thread is created on the page: seeded with its range.
+    m.seed('t', selectors, range);
     m.setThreads([{ id: 't', selectors }]);
     (window as any).__m = m;
   });

@@ -155,6 +155,9 @@ export class AnchorManager {
   seed(id: string, selectors: Selector[], range: Range) {
     const entry = this.newEntry(id, selectors, { status: 'anchored', range, fuzzy: false });
     entry.anchoredText = stripWs(range.toString());
+    // Its rendered extent now, so a later partial collapse is noticed.
+    const root = this.getRoot();
+    if (root) entry.anchoredRendered = renderedOf(new TextIndex(root), range);
     this.entries.set(id, entry);
   }
 
