@@ -42,8 +42,9 @@ Choices made while building this without supervision, with the reasoning.
   context. Hidden text still counts in offsets. A thread on text the page later hides (a
   collapsed section) is listed as orphaned until it's shown again; show/hide changes trigger a
   retry. That includes a passage whose middle gets hidden while its ends stay visible: after
-  show/hide changes (at most every 2 s) each anchor's count of rendered characters is compared
-  with what it had.
+  show/hide changes or elements being added or removed (at most every 2 s; pure text edits
+  such as a ticking counter can't hide anything) each anchor's rendered characters (count plus
+  a hash) are compared with what they were.
 - **Web components:** the text index walks the page as rendered: open shadow roots in place of
   their host's children, slots showing what's assigned to them (closed roots can't be read, by
   design). Selections inside a component come from `getComposedRanges`, their selectors are

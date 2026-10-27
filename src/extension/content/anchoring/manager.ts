@@ -62,6 +62,8 @@ export class AnchorManager {
   private dirty = true;
   /** Layout-affecting attributes changed (visibility of copies may have too). */
   private layoutDirty = false;
+  /** Elements were added or removed: what's hidden may have changed with the raw text the same. */
+  private structureDirty = false;
   private textChangedAt = Date.now();
 
   constructor(
@@ -76,17 +78,22 @@ export class AnchorManager {
     this.observer = new MutationObserver(mutations => {
       let text = false;
       let layout = false;
+      let structure = false;
       for (const m of mutations) {
         if (this.ignore(m.target)) continue;
         if (m.type === 'attributes') layout = true;
-        else text = true;
-        // Both kinds matter (a label change and a section closing can share a batch).
-        if (text && layout) break;
+        else {
+          text = true;
+          if (!structure && m.type === 'childList') structure = hasElement(m.addedNodes) || hasElement(m.removedNodes);
+        }
+        // Every kind matters (a label change and a section closing can share a batch).
+        if (text && layout && structure) break;
       }
       if (text) {
         this.dirty = true;
         this.textChangedAt = Date.now();
       }
+      if (structure) this.structureDirty = true;
       // Class/style/hidden changes can show or hide copies of the text.
       if (layout) this.layoutDirty = true;
       if (text || layout) this.schedule();
@@ -220,9 +227,11 @@ export class AnchorManager {
     const fresh = this.dirty || this.layoutDirty || !carried;
     const textChanged = this.dirty || (!!carried && carried.text);
     const layoutChanged = this.layoutDirty || (!!carried && carried.layout);
+    const structureChanged = this.structureDirty;
     this.carry = null;
     this.dirty = false;
     this.layoutDirty = false;
+    this.structureDirty = false;
     const settled = now - this.textChangedAt >= SETTLE_MS;
 
     let index: TextIndex | null = null;
@@ -232,9 +241,10 @@ export class AnchorManager {
     // A pass yields after a short time budget and continues on the next one,
     // so many (or expensive) threads never freeze the page.
     // Rendered-text checks need a text index: at most every 2 s. A pass cut
-    // short keeps its obligation for the entries it didn't reach.
+    // short keeps its obligation for the entries it didn't reach. Pure text
+    // edits (a ticking counter) can't hide anything: the raw-text check covers them.
     let renderedCheck = !!carried && carried.rendered;
-    if (!renderedCheck && (layoutChanged || this.renderedCheckDue)) {
+    if (!renderedCheck && (layoutChanged || structureChanged || this.renderedCheckDue)) {
       const wait = 2000 - (now - this.lastRenderedCheck);
       if (wait <= 0) {
         renderedCheck = true;
@@ -413,6 +423,11 @@ export class AnchorManager {
 /** A fingerprint of a range's rendered characters (hidden parts excluded). */
 function renderedOf(index: TextIndex, range: Range): string {
   return index.renderedFingerprint(range) ?? 'unwalked';
+}
+
+function hasElement(nodes: NodeList): boolean {
+  for (let i = 0; i < nodes.length; i++) if (nodes[i].nodeType === Node.ELEMENT_NODE) return true;
+  return false;
 }
 
 function sameRange(a: Range, b: Range): boolean {

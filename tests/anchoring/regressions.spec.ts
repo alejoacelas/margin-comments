@@ -977,3 +977,42 @@ test('a short quote stays anchored while unrelated text changes', async ({ page 
   expect(await where()).toBe('s0');
 });
 
+async function seedWhole(page: Page, from: string, to: string) {
+  await page.evaluate(([from, to]) => {
+    const mc = (window as any).__mc;
+    const a = document.getElementById(from)!;
+    const b = document.getElementById(to)!;
+    const r = document.createRange();
+    r.setStart(a.firstChild!, 0);
+    r.setEnd(b.lastChild!, (b.lastChild as Text).length);
+    const { selectors, range } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.seed('t', selectors, range);
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  }, [from, to]);
+}
+
+test('replacing elements so another same-length alternative shows is noticed (no attribute change)', async ({ page }) => {
+  await load(page, `<main><p id="p">Account: <span id="alts"><span>1111111111 Alice Smith balance 111.11</span><span hidden>9999999999 Bobby Jones balance 999.99</span></span>.</p></main>`);
+  await seedWhole(page, 'p', 'p');
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 10_000 }).toBe('anchored');
+  await page.waitForTimeout(2500);
+  // Same raw text, new elements: only child-list mutations.
+  await page.evaluate(() => (document.getElementById('alts')!.innerHTML = '<span hidden>1111111111 Alice Smith balance 111.11</span><span>9999999999 Bobby Jones balance 999.99</span>'));
+  await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
+});
+
+test("replacing a passage's middle with the same words, hidden, is noticed", async ({ page }) => {
+  const middle = Array.from({ length: 30 }, (_, i) => `Detail sentence ${i} inside the section.`).join(' ');
+  await load(page, `<main><p id="a">Beginning.</p><div id="mid"><p>${middle}</p></div><p id="b">Conclusion.</p></main>`);
+  await seedWhole(page, 'a', 'b');
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 10_000 }).toBe('anchored');
+  await page.waitForTimeout(2500);
+  await page.evaluate(m => (document.getElementById('mid')!.innerHTML = `<p hidden>${m}</p>`), middle);
+  await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
+});
+

@@ -577,3 +577,11 @@ Reviewers B and C found nothing material.
 | # | Finding | Verdict | Fix / test |
 |---|---------|---------|------------|
 | A1 | A short quote ("Paid") stayed on, or on reload re-attached to, a table row reused for another record: the saved range/position were trusted for any unique quote, and live context re-checks ran only for repeated quotes, while quote matching itself requires context for unique quotes under 8 characters | Fixed | One rule everywhere: quotes under 8 characters are never identified by uniqueness alone, so the saved range/position aren't used for them and they're re-checked by context on text changes. Anchoring regressions "a short quote is not anchored by its saved position alone…" and "a short quote is orphaned when its row is reused…" (both fail on the previous code), plus "a short quote stays anchored while unrelated text changes" |
+
+## Round 49 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | The rendered-extent check ran only after attribute changes, so replacing elements (`innerHTML`) with the same raw text but a different alternative shown, or the passage's middle hidden, kept the old anchor | Fixed | Child-list mutations that add or remove elements also schedule the (2 s rate-limited) check; pure text edits don't, since they can't hide anything (index builds measured at 1–24 ms on the largest corpus pages). Anchoring regressions "replacing elements so another same-length alternative shows is noticed" and "replacing a passage's middle with the same words, hidden, is noticed"; both fail on the previous code |
