@@ -52,7 +52,8 @@ Choices made while building this without supervision, with the reasoning.
 - **Bounded matching cost:** stored selectors come from any user, so matching uses at most 64
   characters of context (the server refuses longer; we store 32) and scores at most 2000
   occurrences of a quote (the nearest to its old position). A selector built to be expensive
-  can't freeze the page, and an anchoring pass yields after 50 ms and continues on the next
+  can't freeze the page: only the simple element paths we generate are evaluated as XPath
+  (never `document.evaluate`; the server refuses others), and an anchoring pass yields after 50 ms and continues on the next
   one where it stopped, so many threads (a page flooded with them) are anchored in slices and
   none is starved.
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
@@ -236,6 +237,10 @@ Choices made while building this without supervision, with the reasoning.
   such as indentation is meaningful. Cancel/Discard delete by the text the user was
   looking at, never a different text, and never the draft of another tab that is still open. A
   change is only ever queued under the account it was typed in.
+- **Edits carry the text they started from:** the server applies an edit only if the comment
+  still has that text (or already has the new text: an idempotent retry); otherwise it's a
+  conflict, and the edit stays visible as unsaved with Copy text. A late retry of an old edit
+  can't overwrite a newer one made elsewhere.
 - **Worker lifecycle:** a 20 s ping keeps the worker alive while pages are open; content scripts
   reconnect and re-introduce themselves when it restarts; fetched thread lists are reconciled with
   live updates (version numbers, tombstones).
@@ -256,7 +261,8 @@ Choices made while building this without supervision, with the reasoning.
   accounting. Email replies are read up to 2 MB of text; a longer one is refused as a whole
   (the verified sender gets it back), never posted in part; the same when the HTML converter
   has to skip content (too deep or too many children). Before conversion, one linear pass
-  flattens element nesting beyond 32 levels (text kept) and refuses mails with over 50,000 tags:
+  flattens element nesting beyond 32 levels (text kept; counted over matched elements only,
+  unmatched closing tags are dropped) and refuses mails with over 50,000 tags:
   the converter builds the whole tree first and is quadratic on very deep ones. Received emails over 12 MB aren't
   downloaded, and at most three are fetched at once (Resend redelivers the rest). A returned
   reply carries at most 100,000 characters of the text, and the email worker loads one queued

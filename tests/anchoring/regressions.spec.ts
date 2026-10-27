@@ -617,3 +617,18 @@ test('with many anchored threads, every new thread still gets its turn', async (
   expect(pending).toEqual([]);
 });
 
+test('a stored selector with a hostile XPath is ignored, not evaluated', async ({ page }) => {
+  await load(page, `<main>${Array.from({ length: 3000 }, (_, i) => `<p>Paragraph ${i} of ordinary page text.</p>`).join('')}<p id="u">A unique passage to anchor.</p></main>`);
+  const res = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const t0 = performance.now();
+    const out = mc.anchorSelectors(document.body, [
+      { type: 'RangeSelector', startContainer: '//*[count(preceding::*[count(preceding::*) > 999999]) > 999999]', startOffset: 0, endContainer: '//*[count(preceding::*) > 999999]', endOffset: 1 },
+      { type: 'TextQuoteSelector', exact: 'A unique passage to anchor.' },
+    ]);
+    return { ms: performance.now() - t0, text: out && out.range.toString() };
+  });
+  expect(res.text).toBe('A unique passage to anchor.');
+  expect(res.ms).toBeLessThan(500);
+});
+

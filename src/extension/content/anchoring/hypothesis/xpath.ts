@@ -152,18 +152,13 @@ export function nodeFromXPath(
   /* istanbul ignore next */
   root: Element = document.body,
 ): Node | null {
+  // margin-comments: only the simple paths we generate are evaluated. Stored
+  // selectors come from any user; a general XPath (document.evaluate) can be
+  // made arbitrarily expensive and would freeze the page. Others are ignored
+  // (anchoring falls back to the quote).
   try {
     return evaluateSimpleXPath(xpath, root);
   } catch {
-    return document.evaluate(
-      '.' + xpath,
-      root,
-
-      // nb. The `namespaceResolver` and `result` arguments are optional in the spec
-      // but required in Edge Legacy.
-      null /* namespaceResolver */,
-      XPathResult.FIRST_ORDERED_NODE_TYPE,
-      null /* result */,
-    ).singleNodeValue;
+    return null;
   }
 }

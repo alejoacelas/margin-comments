@@ -115,7 +115,10 @@ function prepareHtml(html: string): { html: string; clipped: boolean } {
   // Element nesting beyond this is flattened (tags dropped, text kept): the
   // converter builds the whole tree first, and very deep trees cost it
   // quadratic time. A mail with this many tags isn't converted at all.
-  let depth = 0;
+  // Open elements we passed on (unmatched closing tags are dropped: the
+  // parser would ignore them, so they mustn't lower our count either).
+  const open: string[] = [];
+  const dropped = new Map<string, number>();
   const MAX_DEPTH = 32;
   let tags = 0;
   const MAX_TAGS = 50_000;
@@ -137,17 +140,28 @@ function prepareHtml(html: string): { html: string; clipped: boolean } {
     if (++tags > MAX_TAGS) return { html: '', clipped: true };
     const name = /^<\/?\s*([!a-z][a-z0-9-]*)/i.exec(tag)?.[1]?.toLowerCase();
     const closing = tag[1] === '/';
-    // Depth of ordinary elements (not void, self-closing, comments or doctype).
+    // Nesting of ordinary elements (not void, self-closing, comments or doctype).
     const nests = !!name && name[0] !== '!' && !VOID_TAGS.has(name) && !tag.endsWith('/>');
-    if (nests && !closing && ++depth > MAX_DEPTH) {
-      i = gt + 1;
-      continue;
+    if (nests && name !== 'head' && name !== 'html' && name !== 'body' && name !== 'blockquote') {
+      if (!closing) {
+        if (open.length >= MAX_DEPTH) {
+          dropped.set(name, (dropped.get(name) ?? 0) + 1);
+          i = gt + 1;
+          continue;
+        }
+        open.push(name);
+      } else {
+        const d = dropped.get(name) ?? 0;
+        const at = open.lastIndexOf(name);
+        if (d > 0) dropped.set(name, d - 1);
+        else if (at >= 0) open.length = at;
+        // A closing tag we dropped the opening of, or that matches nothing: drop it.
+        if (d > 0 || at < 0) {
+          i = gt + 1;
+          continue;
+        }
+      }
     }
-    if (nests && closing && depth-- > MAX_DEPTH) {
-      i = gt + 1;
-      continue;
-    }
-    if (depth < 0) depth = 0;
     if (name === 'head') inHead = !closing;
     else if (name === 'blockquote') {
       const depth = closing ? quoteDepth-- : ++quoteDepth;

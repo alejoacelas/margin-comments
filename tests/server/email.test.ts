@@ -250,6 +250,13 @@ describe('extractReply', () => {
       if (last) expect(out).toBe(last);
     }
   });
+  it('unmatched closing tags do not defeat the nesting bound', () => {
+    for (const html of ['<div></foo>'.repeat(24000) + 'hello', '<div></span>'.repeat(24000) + 'hello', '<b><i></u>'.repeat(16000) + 'hello']) {
+      const t0 = performance.now();
+      extractReply(null, html);
+      expect(performance.now() - t0, html.slice(0, 12)).toBeLessThan(1500);
+    }
+  });
   it('keeps text below separator lines', () => {
     expect(extractReply('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.', null)).toBe('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.');
     expect(extractReply('Two options:\n===\nA or B.\n\nOn Mon, Bob wrote:\n> which?', null)).toBe('Two options:\n===\nA or B.');

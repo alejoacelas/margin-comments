@@ -690,7 +690,7 @@ async function execute(op: Op, token: string): Promise<void> {
         return;
       }
       case 'editComment': {
-        const r = await api<{ thread: Thread }>('PATCH', `/api/comments/${op.commentId}`, { token, body: { body: op.body } });
+        const r = await api<{ thread: Thread }>('PATCH', `/api/comments/${op.commentId}`, { token, body: { body: op.body, base: op.base } });
         deliverThread(r.thread);
         return;
       }

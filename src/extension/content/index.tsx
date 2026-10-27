@@ -757,7 +757,10 @@ class MarginComments implements Actions {
   }
 
   async edit(thread: ViewThread, commentId: string, body: string, draftKey: string) {
-    await this.mutate({ kind: 'editComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId, body }, draftKey, body);
+    // The text being replaced: the server refuses the edit if the comment has
+    // changed since (e.g. a retry of an old edit after a newer one elsewhere).
+    const base = thread.comments.find(c => c.id === commentId)?.body;
+    await this.mutate({ kind: 'editComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId, body, base }, draftKey, body);
   }
 
   async remove(thread: ViewThread, commentId: string) {

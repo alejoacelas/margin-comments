@@ -450,3 +450,13 @@ Reviewer C found nothing material.
 
 All verified to fail on the previous code.
 
+## Round 36 — full repository (2026-10-27)
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **A stored RangeSelector with a general XPath (not the simple paths we generate) was evaluated with `document.evaluate`; crafted expressions froze visitors' tabs (minutes in the regression before the fix)** | Fixed | Only simple element paths are evaluated (others are ignored; the quote anchors); the server refuses non-simple paths. Anchoring regression "a stored selector with a hostile XPath is ignored, not evaluated"; `api.test.ts` "only simple element paths are accepted in RangeSelectors" |
+| B1 | **The HTML nesting guard counted unmatched closing tags (`<div></foo>`), so real nesting could grow unbounded (3.8 s)** | Fixed | Nesting is tracked over matched open elements; unmatched closing tags are dropped. `email.test.ts` "unmatched closing tags do not defeat the nesting bound" |
+| C1 | A retried edit whose response was lost could overwrite a newer edit made on another device | Fixed | Edits carry the text they started from; a changed comment is a conflict (the edit stays visible as unsaved). `api.test.ts` "an edit made from an outdated text is a conflict, not an overwrite" |
+
+All verified to fail on the previous code.
+

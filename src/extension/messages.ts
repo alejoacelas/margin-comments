@@ -19,7 +19,7 @@ export type Op = OpBase &
   (
     | { kind: 'createThread'; payload: CreateThreadRequest }
     | { kind: 'addComment'; commentId: string; body: string }
-    | { kind: 'editComment'; commentId: string; body: string }
+    | { kind: 'editComment'; commentId: string; body: string; /** The text the edit started from. */ base?: string }
     | { kind: 'deleteComment'; commentId: string }
     | { kind: 'resolve'; resolved: boolean }
   );

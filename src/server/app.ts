@@ -56,6 +56,7 @@ declare module 'fastify' {
 // Validation
 // ---------------------------------------------------------------------------
 
+const SIMPLE_XPATH = /^(\/[A-Za-z0-9-]+(\[[0-9]+\])?)*$/;
 const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 const body = z
   .string()
@@ -75,9 +76,10 @@ const selector = z.discriminatedUnion('type', [
   z.object({ type: z.literal('TextPositionSelector'), start: z.number().int().min(0), end: z.number().int().min(0) }),
   z.object({
     type: z.literal('RangeSelector'),
-    startContainer: z.string().max(4000),
+    // Only the simple element paths the extension generates (/main[1]/p[3]).
+    startContainer: z.string().max(4000).regex(SIMPLE_XPATH),
     startOffset: z.number().int().min(0),
-    endContainer: z.string().max(4000),
+    endContainer: z.string().max(4000).regex(SIMPLE_XPATH),
     endOffset: z.number().int().min(0),
   }),
 ]);
@@ -98,7 +100,7 @@ const createThreadSchema = z.object({
 });
 
 const addCommentSchema = z.object({ id: uuid, body });
-const editCommentSchema = z.object({ body });
+const editCommentSchema = z.object({ body, base: body.optional() });
 const resolveSchema = z.object({ resolved: z.boolean() });
 const emailStartSchema = z.object({ email: z.string().max(LIMITS.email) });
 const emailVerifySchema = z.union([
@@ -432,7 +434,7 @@ export async function buildApp({ config, db: givenDb, provider: givenProvider, l
     userLimit(user, 'write', 120, 60_000);
     const id = parse(uuid, (req.params as { id: string }).id);
     const input = parse(editCommentSchema, req.body);
-    const thread = editComment(db, user, id, input.body);
+    const thread = editComment(db, user, id, input.body, input.base);
     hub.publishThread(thread);
     return { thread };
   });

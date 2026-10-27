@@ -299,11 +299,19 @@ function ownComment(db: DB, user: UserRow, commentId: string): CommentRow {
   return c;
 }
 
-export function editComment(db: DB, user: UserRow, commentId: string, body: string): Thread {
+/**
+ * Replace a comment's text. With `base` (the text the edit started from), a
+ * comment that has changed since is a conflict, not overwritten: e.g. a retry
+ * of an old edit arriving after a newer edit from another device.
+ */
+export function editComment(db: DB, user: UserRow, commentId: string, body: string, base?: string): Thread {
   return tx(db, () => {
     const c = ownComment(db, user, commentId);
     if (c.deleted_at) throw new ApiError(410, 'comment_deleted');
     liveThreadRow(db, user, c.thread_id);
+    if (base !== undefined && c.body !== body && c.body !== base) {
+      throw new ApiError(409, 'edit_conflict', 'This comment was changed elsewhere. Your edit is kept here: copy it and edit again.');
+    }
     if (c.body !== body) {
       db.prepare('UPDATE comments SET body = ?, edited_at = ? WHERE id = ?').run(body, nowIso(), commentId);
       bump(db, c.thread_id);

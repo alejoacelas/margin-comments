@@ -103,6 +103,36 @@ describe('email sign-in', () => {
     expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: p })).statusCode).toBe(400);
   });
 
+  it('only simple element paths are accepted in RangeSelectors', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    const bad = threadPayload({
+      selectors: [
+        { type: 'TextQuoteSelector', exact: 'the quick brown fox' },
+        { type: 'RangeSelector', startContainer: '//*[count(preceding::*) > 999999]', startOffset: 0, endContainer: '/p[1]', endOffset: 1 },
+      ],
+    });
+    expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: bad })).statusCode).toBe(400);
+    const good = threadPayload({ selectors: [{ type: 'TextQuoteSelector', exact: 'the quick brown fox' }, { type: 'RangeSelector', startContainer: '/main[1]/p[2]', startOffset: 0, endContainer: '/main[1]/p[2]', endOffset: 5 }] });
+    expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: good })).statusCode).toBe(201);
+  });
+
+  it('an edit made from an outdated text is a conflict, not an overwrite (retries are idempotent)', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    const p = threadPayload({ pageKeys: ['example.com/edits'] });
+    await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: p });
+    const edit = (body: string, base: string) => t.app.inject({ method: 'PATCH', url: `/api/comments/${p.comment.id}`, headers: auth(token), payload: { body, base } });
+    expect((await edit('Edit A', 'First!')).statusCode).toBe(200);
+    expect((await edit('Edit B', 'Edit A')).statusCode).toBe(200);
+    // A late retry of edit A (its response was lost) must not undo B.
+    const stale = await edit('Edit A', 'First!');
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().error).toBe('edit_conflict');
+    // Retrying B (already applied) is fine.
+    expect((await edit('Edit B', 'Edit A')).statusCode).toBe(200);
+    const thread = (await t.app.inject({ method: 'GET', url: `/api/threads/${p.id}`, headers: auth(token) })).json().thread;
+    expect(thread.comments[0].body).toBe('Edit B');
+  });
+
   it('a thread holds at most 100 comments', async () => {
     const { token } = await signIn(t, 'alice@example.com');
     const p = threadPayload({ pageKeys: ['example.com/full'] });
