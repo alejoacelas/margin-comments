@@ -97,6 +97,12 @@ describe('email sign-in', () => {
     expect(r.statusCode).toBeGreaterThanOrEqual(400);
   });
 
+  it('quote context longer than 64 characters is refused', async () => {
+    const { token } = await signIn(t, 'alice@example.com');
+    const p = threadPayload({ selectors: [{ type: 'TextQuoteSelector', exact: 'e', prefix: 'z'.repeat(400), suffix: 'z'.repeat(400) }] });
+    expect((await t.app.inject({ method: 'POST', url: '/api/threads', headers: auth(token), payload: p })).statusCode).toBe(400);
+  });
+
   it('a thread holds at most 100 comments', async () => {
     const { token } = await signIn(t, 'alice@example.com');
     const p = threadPayload({ pageKeys: ['example.com/full'] });

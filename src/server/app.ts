@@ -68,8 +68,9 @@ const selector = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('TextQuoteSelector'),
     exact: z.string().min(1).max(LIMITS.quote),
-    prefix: z.string().max(400).optional(),
-    suffix: z.string().max(400).optional(),
+    // We store 32 characters of context; longer context only costs matching time.
+    prefix: z.string().max(64).optional(),
+    suffix: z.string().max(64).optional(),
   }),
   z.object({ type: z.literal('TextPositionSelector'), start: z.number().int().min(0), end: z.number().int().min(0) }),
   z.object({

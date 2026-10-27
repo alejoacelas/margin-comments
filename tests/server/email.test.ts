@@ -238,6 +238,18 @@ describe('extractReply', () => {
     // Ordinary nesting still works: answers below quotes are kept.
     expect(extractReply(null, '<div>On Mon, Bob wrote:</div><blockquote type="cite"><blockquote>old</blockquote>older</blockquote><div>My answer.</div>')).toBe('My answer.');
   });
+  it('deeply nested ordinary tags are flattened before conversion (fast, text kept)', () => {
+    for (const [html, last] of [
+      ['<div>'.repeat(160000) + 'answer', ''],
+      ['<div>'.repeat(40000) + 'the answer', 'the answer'],
+      ['<span>'.repeat(20000) + 'x' + '</span>'.repeat(20000), 'x'],
+    ] as const) {
+      const t0 = performance.now();
+      const out = extractReply(null, html);
+      expect(performance.now() - t0, html.slice(0, 12)).toBeLessThan(1500);
+      if (last) expect(out).toBe(last);
+    }
+  });
   it('keeps text below separator lines', () => {
     expect(extractReply('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.', null)).toBe('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.');
     expect(extractReply('Two options:\n===\nA or B.\n\nOn Mon, Bob wrote:\n> which?', null)).toBe('Two options:\n===\nA or B.');

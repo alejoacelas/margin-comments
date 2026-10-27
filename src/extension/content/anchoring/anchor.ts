@@ -601,6 +601,8 @@ type Candidate = {
 };
 
 const LONG_QUOTE = 1000;
+/** Characters of stored context used for scoring (we store 32). */
+const MAX_CONTEXT = 64;
 const LONG_QUOTE_PART = 256;
 
 function matchQuoteInIndex(
@@ -609,8 +611,10 @@ function matchQuoteInIndex(
   rawHint: number | undefined,
 ): AnchorResult | null {
   const q = stripWs(quote.exact);
-  const prefix = quote.prefix ? stripWs(quote.prefix) : undefined;
-  const suffix = quote.suffix ? stripWs(quote.suffix) : undefined;
+  // Context is scored against every candidate: bounded length keeps a stored
+  // selector (anyone can save one) from freezing the page.
+  const prefix = quote.prefix ? stripWs(quote.prefix).slice(-MAX_CONTEXT) || undefined : undefined;
+  const suffix = quote.suffix ? stripWs(quote.suffix).slice(0, MAX_CONTEXT) || undefined : undefined;
   const hint = typeof rawHint === 'number' ? index.fromRaw(rawHint) : undefined;
   const text = index.text;
   if (!text) return null;

@@ -423,3 +423,12 @@ All verified to fail on the previous code.
 
 All verified to fail on the previous code. Corpus: "unchanged" is now 476/476 (two corpus quotes were in editable regions).
 
+## Round 34 — full repository (2026-10-27)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **A stored selector with a one-letter quote and 400-character context froze every visitor's tab (each occurrence's context was fuzzy-scored; 8.6 s on a modest page, over a minute on a big one, repeated by orphan retries)** | Fixed | Matching uses at most 64 characters of context and scores at most 2000 occurrences (nearest the old position); the server refuses context over 64 characters. Anchoring regression "a stored selector built to be expensive… anchors or orphans quickly" (112 s before, under 1.5 s after); `api.test.ts` "quote context longer than 64 characters is refused" |
+| B1 | **The HTML converter builds the whole tree before its depth limits apply: 800 KB of nested `<div>`s blocked the server 4.4 s (quadratic)** | Fixed | A linear pre-pass flattens nesting beyond 32 levels (text kept) and refuses mails with over 50,000 tags. `email.test.ts` "deeply nested ordinary tags are flattened before conversion"; verified to fail without the fix |
+

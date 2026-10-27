@@ -48,6 +48,10 @@ Choices made while building this without supervision, with the reasoning.
   shadow root (page styles don't reach in; a stylesheet, not a DOM node). For pages without
   shadow roots offsets are exactly `textContent` offsets, as before (corpus unchanged). A quote
   that crosses a shadow boundary can't be one Range and isn't supported.
+- **Bounded matching cost:** stored selectors come from any user, so matching uses at most 64
+  characters of context (the server refuses longer; we store 32) and scores at most 2000
+  occurrences of a quote (the nearest to its old position). A selector built to be expensive
+  can't freeze the page.
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
   context; short exact strings need context unless they're unique on the page; matches are only
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is
@@ -248,7 +252,9 @@ Choices made while building this without supervision, with the reasoning.
   never contains control characters (other than tab/newline), which would defeat the
   accounting. Email replies are read up to 2 MB of text; a longer one is refused as a whole
   (the verified sender gets it back), never posted in part; the same when the HTML converter
-  has to skip content (too deep or too many children). Received emails over 12 MB aren't
+  has to skip content (too deep or too many children). Before conversion, one linear pass
+  flattens element nesting beyond 32 levels (text kept) and refuses mails with over 50,000 tags:
+  the converter builds the whole tree first and is quadratic on very deep ones. Received emails over 12 MB aren't
   downloaded, and at most three are fetched at once (Resend redelivers the rest).
 - **Extension storage:** `unlimitedStorage`, so drafts and queued changes never hit the 10 MB
   quota; if saving a draft keeps failing anyway, the page says so (the text stays in the editor).

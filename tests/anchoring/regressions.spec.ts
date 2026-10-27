@@ -556,3 +556,16 @@ test("text in an editor next to a selection (someone's unsent draft) stays out o
   }
 });
 
+test('a stored selector built to be expensive (tiny quote, huge context) anchors or orphans quickly', async ({ page }) => {
+  await load(page, `<main><p>${'Here is a passage that readers can select and discuss. '.repeat(400)}</p></main>`);
+  const ms = await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const t0 = performance.now();
+    for (const exact of ['e', 'a', 's']) {
+      mc.anchorSelectors(document.body, [{ type: 'TextQuoteSelector', exact, prefix: 'z'.repeat(400), suffix: 'z'.repeat(400) }]);
+    }
+    return performance.now() - t0;
+  });
+  expect(ms).toBeLessThan(1500);
+});
+

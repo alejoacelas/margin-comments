@@ -103,13 +103,22 @@ const HTML_HISTORY_MARKERS: RegExp[] = [
  * the converter lift its content out of the quote. (Whole-document regexes
  * here were quadratic on malformed HTML.)
  */
-function prepareHtml(html: string): string {
+const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+
+function prepareHtml(html: string): { html: string; clipped: boolean } {
   const out: string[] = [];
   let inHead = false;
   // Quote nesting beyond a few levels is dropped (its text stays): each level
   // prefixes every line below it, so deep nesting multiplies the output.
   let quoteDepth = 0;
   const MAX_QUOTE_DEPTH = 8;
+  // Element nesting beyond this is flattened (tags dropped, text kept): the
+  // converter builds the whole tree first, and very deep trees cost it
+  // quadratic time. A mail with this many tags isn't converted at all.
+  let depth = 0;
+  const MAX_DEPTH = 32;
+  let tags = 0;
+  const MAX_TAGS = 50_000;
   let i = 0;
   while (i < html.length) {
     const lt = html.indexOf('<', i);
@@ -125,8 +134,20 @@ function prepareHtml(html: string): string {
     }
     const tag = html.slice(lt, Math.min(gt + 1, lt + 2000));
     if (HTML_HISTORY_MARKERS.some(re => re.test(tag))) break;
+    if (++tags > MAX_TAGS) return { html: '', clipped: true };
     const name = /^<\/?\s*([!a-z][a-z0-9-]*)/i.exec(tag)?.[1]?.toLowerCase();
     const closing = tag[1] === '/';
+    // Depth of ordinary elements (not void, self-closing, comments or doctype).
+    const nests = !!name && name[0] !== '!' && !VOID_TAGS.has(name) && !tag.endsWith('/>');
+    if (nests && !closing && ++depth > MAX_DEPTH) {
+      i = gt + 1;
+      continue;
+    }
+    if (nests && closing && depth-- > MAX_DEPTH) {
+      i = gt + 1;
+      continue;
+    }
+    if (depth < 0) depth = 0;
     if (name === 'head') inHead = !closing;
     else if (name === 'blockquote') {
       const depth = closing ? quoteDepth-- : ++quoteDepth;
@@ -135,17 +156,20 @@ function prepareHtml(html: string): string {
     } else if (name !== '!doctype' && name !== 'html' && name !== 'body' && !inHead) out.push(html.slice(lt, gt + 1));
     i = gt + 1;
   }
-  return out.join('');
+  return { html: out.join(''), clipped: false };
 }
 
 /** Marker the converter puts where it skipped content (never in real mail). */
 const CLIPPED = '\u2063mc-clipped\u2063';
 
 function htmlToText(html: string): string {
-  return convert(prepareHtml(html), {
+  const prepared = prepareHtml(html);
+  // Too many tags to convert safely: reported as clipped (the reply is refused whole).
+  if (prepared.clipped) return CLIPPED;
+  return convert(prepared.html, {
     wordwrap: false,
     // Bounded work and output for hostile HTML (deep nesting, huge fan-out).
-    limits: { maxDepth: 40, maxChildNodes: 5000, maxInputLength: MAX_INPUT, ellipsis: CLIPPED },
+    limits: { maxDepth: 48, maxChildNodes: 5000, maxInputLength: MAX_INPUT, ellipsis: CLIPPED },
     selectors: [
       // Keep where a link goes ("my proposal [https://…]"), unless the text is the URL.
       { selector: 'a', options: { hideLinkHrefIfSameAsText: true } },

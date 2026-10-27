@@ -6,6 +6,9 @@
 import approxSearch from 'approx-string-match';
 import type { Match as StringMatch } from 'approx-string-match';
 
+// margin-comments: most candidates scored per quote.
+const MAX_CANDIDATES = 2000;
+
 type Match = {
   /** Start offset of match in text */
   start: number;
@@ -138,7 +141,14 @@ export function matchQuoteCandidates(
   const maxErrors = Math.min(256, quote.length / 2);
 
   // Find the closest matches for `quote` in `text` based on edit distance.
-  const matches = search(text, quote, maxErrors, alsoFuzzy);
+  let matches = search(text, quote, maxErrors, alsoFuzzy);
+  // margin-comments: a short quote can occur thousands of times on a big
+  // page; scoring each one's context has a cost, so only the ones nearest
+  // the expected position are scored.
+  if (matches.length > MAX_CANDIDATES) {
+    const hint = context.hint ?? 0;
+    matches = [...matches].sort((a, b) => Math.abs(a.start - hint) - Math.abs(b.start - hint)).slice(0, MAX_CANDIDATES);
+  }
 
   if (matches.length === 0) {
     return [];
