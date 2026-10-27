@@ -213,11 +213,13 @@ export class AnchorManager {
     if (!root) return;
 
     // A pass cut short continues with the entries it didn't reach and the
-    // signals it had; anything new since starts a fresh full pass.
-    const fresh = this.dirty || this.layoutDirty || !this.carry;
-    const textChanged = this.dirty || (!!this.carry && this.carry.text);
-    const layoutChanged = this.layoutDirty || (!!this.carry && this.carry.layout);
-    const carried = fresh ? null : this.carry;
+    // signals it had. Anything new since makes it a full pass, still starting
+    // where the last one stopped: on a page that never stops changing, every
+    // entry still gets its turn.
+    const carried = this.carry;
+    const fresh = this.dirty || this.layoutDirty || !carried;
+    const textChanged = this.dirty || (!!carried && carried.text);
+    const layoutChanged = this.layoutDirty || (!!carried && carried.layout);
     this.carry = null;
     this.dirty = false;
     this.layoutDirty = false;
@@ -249,7 +251,7 @@ export class AnchorManager {
     // list aren't starved by the ones before them.
     const list = [...this.entries.values()];
     const start = carried && list.length ? this.cursor % list.length : 0;
-    const count = carried ? Math.min(carried.remaining, list.length) : list.length;
+    const count = fresh ? list.length : Math.min(carried.remaining, list.length);
     this.cursor = 0;
 
     for (let k = 0; k < count; k++) {
@@ -406,7 +408,7 @@ export class AnchorManager {
 // Every attribute: pages show and hide content through any of them (class,
 // style, hidden, open, but also data-* / aria-* matched by their CSS). Passes
 // are throttled, so busy attributes only cost a flag.
-/** How many of a range's characters are rendered (hidden parts excluded). */
+/** A fingerprint of a range's rendered characters (hidden parts excluded). */
 function renderedOf(index: TextIndex, range: Range): string {
   return index.renderedFingerprint(range) ?? 'unwalked';
 }

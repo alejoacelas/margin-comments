@@ -895,3 +895,27 @@ test('a passage whose shown alternative is swapped for one of the same length st
   await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
 });
 
+test('on a page that never stops changing, every thread still gets anchored', async ({ page }) => {
+  const rows = Array.from({ length: 500 }, (_, i) => `<tr><td>Order ${i}</td><td id="c${i}">Pending approval</td></tr>`).join('');
+  await load(page, `<main><p id="counter">0</p><table>${rows}</table><p id="u">A unique closing paragraph about quarterly totals.</p></main>`);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const describe = (node: Node) => {
+      const r = document.createRange();
+      r.selectNodeContents(node);
+      return mc.describeRange(document.body, r).selectors;
+    };
+    const threads = Array.from({ length: 12 }, (_, i) => ({ id: `t${i}`, selectors: describe(document.getElementById(`c${i * 40}`)!) }));
+    threads.push({ id: 'u', selectors: describe(document.getElementById('u')!) });
+    // A live counter: the page changes every 100 ms, forever.
+    let n = 0;
+    setInterval(() => (document.getElementById('counter')!.textContent = String(++n)), 100);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads(threads);
+    (window as any).__m = m;
+  });
+  const statuses = () => page.evaluate(() => (window as any).__m.all().map((x: any) => x.state.status).join(','));
+  await expect.poll(statuses, { timeout: 15_000 }).toBe(Array(13).fill('anchored').join(','));
+});
+
