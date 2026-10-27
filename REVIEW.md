@@ -490,3 +490,11 @@ Reviewers B and C found nothing material.
 |---|---------|---------|------------|
 | A1 | The chunked long-quote comparison only looked 128 characters around each chunk's place, so a paragraph inserted into a long quoted passage misaligned everything after it and the intact passage orphaned | Fixed | A chunk not found near its place is looked for near-exactly (≤10% errors, so look-alike text elsewhere can't capture it) within 2,048 characters, and the shift counts as inserted/removed text. Anchoring regression "a long quote survives a paragraph inserted into or removed from it"; the rewritten-middle regression still orphans; corpus unchanged |
 
+## Round 40 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Fallback content of `<canvas>`, `<video>`, `<audio>`, `<iframe>`, `<object>` (not rendered when the element works) could enter quotes and stored context | Fixed | Treated like script text (counted in offsets, never quoted or matched). Anchoring regression "fallback content the browser doesn't render…"; verified to fail without the fix; corpus unchanged |
+

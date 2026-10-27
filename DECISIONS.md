@@ -26,7 +26,8 @@ Choices made while building this without supervision, with the reasoning.
   and Hypothesis's own context could include an adjacent inline `<script>`'s data.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
   `<script>/<style>/<noscript>/<template>/<textarea>` (a textarea's children are its initial
-  value, not what it shows), text in editors (anything under a `contenteditable` editing host,
+  value, not what it shows), fallback content the browser doesn't render (`<canvas>`, `<video>`,
+  `<audio>`, `<iframe>`, `<object>`), text in editors (anything under a `contenteditable` editing host,
   including its `contenteditable="false"` chips: someone's unsent writing; the Comment button
   ignores editable text too) and text that isn't rendered (`hidden`, `display:none`,
   `visibility:hidden`, `content-visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text

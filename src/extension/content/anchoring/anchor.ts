@@ -33,9 +33,23 @@ export type AnchorResult = {
   quoteScore: number;
 };
 
-// Text that is never page text: code, templates, and a textarea's children
-// (its initial value, not what it shows).
-const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA']);
+// Text that is never page text: code, templates, a textarea's children (its
+// initial value, not what it shows), and fallback content the browser doesn't
+// render when the element itself works (canvas, media, frames, objects).
+const SKIP_TAGS = new Set([
+  'SCRIPT',
+  'STYLE',
+  'NOSCRIPT',
+  'TEMPLATE',
+  'TEXTAREA',
+  'CANVAS',
+  'IFRAME',
+  'VIDEO',
+  'AUDIO',
+  'OBJECT',
+  'NOEMBED',
+  'NOFRAMES',
+]);
 
 /**
  * Is a node (text, or an element's content) shown to the reader? Two parts:

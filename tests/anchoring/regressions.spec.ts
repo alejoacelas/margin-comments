@@ -693,3 +693,24 @@ test('a long quote survives a paragraph inserted into or removed from it', async
   }
 });
 
+test("fallback content the browser doesn't render (canvas, media, frames) stays out of selectors", async ({ page }) => {
+  for (const fallback of [
+    '<canvas>Account: 123456, balance: 9000</canvas>',
+    '<video>Account: 123456, balance: 9000</video>',
+    '<audio>Account: 123456, balance: 9000</audio>',
+    '<object>Account: 123456, balance: 9000</object>',
+  ]) {
+    await load(page, `<main><p id="a">First visible paragraph here.</p>${fallback}<p id="b">Second visible paragraph here.</p></main>`);
+    const json = await page.evaluate(() => {
+      const mc = (window as any).__mc;
+      const one = document.createRange();
+      one.selectNodeContents(document.getElementById('a')!);
+      const across = document.createRange();
+      across.setStart(document.getElementById('a')!.firstChild!, 6);
+      across.setEnd(document.getElementById('b')!.firstChild!, 6);
+      return JSON.stringify([mc.describeRange(document.body, one).selectors, mc.describeRange(document.body, across).selectors]);
+    });
+    expect(json, fallback).not.toContain('123456');
+  }
+});
+
