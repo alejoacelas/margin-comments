@@ -243,7 +243,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
       }}
     >
       <div class="row-quote" style={{ background: props.orphan ? '#f4f4f4' : highlightColor(thread, state.user) }}>
-        {thread.quote}
+        {preview(thread.quote)}
       </div>
       <div class="row-meta">
         <span class="name">{thread.pending ? <Private text={thread.author.name} /> : thread.author.name}</span>
@@ -258,7 +258,7 @@ function ThreadRow(props: { thread: ViewThread; state: State; actions: Actions; 
           <ThreadView key={thread.id} thread={thread} user={state.user} drafts={state.drafts} actions={actions} showHeader />
         </div>
       ) : first ? (
-        <div class="row-first">{thread.pending || first.pending || first.failedOp ? <Private text={first.body} /> : first.body}</div>
+        <div class="row-first">{thread.pending || first.pending || first.failedOp ? <Private text={preview(first.body)} /> : preview(first.body)}</div>
       ) : null}
     </div>
   );
@@ -270,11 +270,11 @@ function DraftRow({ draft, actions, note }: { draft: Draft; actions: Actions; no
     <div class="row" data-testid="draft-row">
       {draft.anchor ? (
         <div class="row-quote" style={{ background: '#f4f4f4' }}>
-          <Private text={draft.anchor.quote} />
+          <Private text={preview(draft.anchor.quote)} />
         </div>
       ) : null}
       <div class="row-first">
-        <Private text={draft.text} />
+        <Private text={preview(draft.text)} />
       </div>
       {note ? <div class="c-status">{note}</div> : null}
       <div class="row-end" style={{ justifyContent: 'flex-start' }}>
@@ -311,6 +311,15 @@ function StrandedRow({ op, actions }: { op: Op; actions: Actions }) {
       </div>
     </div>
   );
+}
+
+/**
+ * The start of a long text, for list rows (which show a few lines anyway):
+ * a page with many threads with long quotes must not put megabytes of text
+ * into the sidebar. Copying and the thread itself use the full text.
+ */
+function preview(s: string, max = 600): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 /** Draft text for comparisons: line endings and ends normalized, inner whitespace kept (it's meaningful). */

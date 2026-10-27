@@ -73,6 +73,9 @@ test('selections across elements, inside lists and tables, overlapping, and very
   await alice.openSidebar(a);
   await expect(a.locator('[data-testid=sidebar-thread]')).toHaveCount(5);
   await expect(a.locator('[data-testid=sidebar-thread]').getByText('Text not found')).toHaveCount(0);
+  // List rows show the start of a long quote, not all of it.
+  const lengths = await a.locator('[data-testid=sidebar-thread] .row-quote').evaluateAll(els => els.map(e => (e.textContent ?? '').length));
+  expect(Math.max(...lengths)).toBeLessThanOrEqual(601);
 });
 
 test('works on a page with a strict Content-Security-Policy', async ({ alice }) => {

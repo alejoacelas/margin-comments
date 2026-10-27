@@ -460,3 +460,8 @@ All verified to fail on the previous code.
 
 All verified to fail on the previous code.
 
+Also from our own audit after round 36: sidebar rows rendered each thread's full quote and first
+comment (clamped only visually), so a page flooded with long-quote threads would put tens of
+megabytes of text into the sidebar. Rows now show the first 600 characters (copy and the thread
+itself use the full text). Checked in the e2e "selections … very long".
+
