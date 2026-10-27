@@ -542,3 +542,14 @@ Reviewers B and C found nothing material.
 |---|---------|---------|------------|
 | A1 | Threads created on the page (seeded with their range) had no rendered-extent baseline, so a collapse before the first check became the baseline | Fixed | Seeding measures the baseline. The collapse regression now seeds the thread as creation does; verified to fail without the fix |
 
+
+## Round 45 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | The mutation observer stopped reading a batch at its first text change, so a show/hide (attribute) change later in the same batch was missed | Fixed | The batch is read until both kinds are seen. Anchoring regression "a collapse in the same mutation batch as a text change is still noticed" |
+| A2 | A time-sliced pass didn't carry its rendered-extent check into its continuations, so threads late in a long list were never re-checked after a collapse | Fixed | The continuation keeps the check. Anchoring regression "a collapse is noticed for a thread late in a long list" (300 threads before it) |
+
+Both verified to fail on the previous code.

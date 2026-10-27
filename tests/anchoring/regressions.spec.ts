@@ -813,3 +813,60 @@ test('a thread whose passage loses its middle to a collapsed section stops being
   await expect.poll(status, { timeout: 15_000 }).toBe('anchored');
 });
 
+test('a collapse in the same mutation batch as a text change is still noticed', async ({ page }) => {
+  const middle = Array.from({ length: 30 }, (_, i) => `Detail sentence ${i} inside the collapsible section.`).join(' ');
+  await load(page, `<main><button id="btn">Show less</button><p id="a">Beginning.</p><details id="d" open><summary>More</summary><p>${middle}</p></details><p id="b">Conclusion.</p></main>`);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.setStart(document.getElementById('a')!.firstChild!, 0);
+    r.setEnd(document.getElementById('b')!.firstChild!, 11);
+    const { selectors, range } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.seed('t', selectors, range);
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 10_000 }).toBe('anchored');
+  await page.waitForTimeout(2500); // past the rendered-check cooldown
+  // One task: the button's label changes, then the section closes.
+  await page.evaluate(() => {
+    document.getElementById('btn')!.textContent = 'Show more';
+    (document.getElementById('d') as HTMLDetailsElement).open = false;
+  });
+  await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
+});
+
+test('a collapse is noticed for a thread late in a long list (the check survives yielding)', async ({ page }) => {
+  const passage = Array.from({ length: 700 }, (_, i) => `Sentence ${i} of a long shared passage that many threads quote.`).join(' ');
+  const middle = Array.from({ length: 30 }, (_, i) => `Detail sentence ${i} inside the collapsible section.`).join(' ');
+  await load(page, `<main><p id="big">${passage}</p><p id="a">Beginning.</p><details id="d" open><summary>More</summary><p>${middle}</p></details><p id="b">Conclusion.</p></main>`);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const describe = (start: Node, so: number, end: Node, eo: number) => {
+      const r = document.createRange();
+      r.setStart(start, so);
+      r.setEnd(end, eo);
+      return mc.describeRange(document.body, r);
+    };
+    const bigText = document.getElementById('big')!.firstChild!;
+    const big = describe(bigText, 0, bigText, (bigText as Text).length);
+    const late = describe(document.getElementById('a')!.firstChild!, 0, document.getElementById('b')!.firstChild!, 11);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    const threads = Array.from({ length: 300 }, (_, i) => ({ id: `t${i}`, selectors: big.selectors }));
+    m.setThreads(threads);
+    // Last in the list: the passes that reach it are continuations.
+    m.seed('late', late.selectors, late.range);
+    m.setThreads([...threads, { id: 'late', selectors: late.selectors }]);
+    (window as any).__m = m;
+  });
+  const status = () => page.evaluate(() => (window as any).__m.get('late').status);
+  await expect.poll(status, { timeout: 15_000 }).toBe('anchored');
+  await page.waitForTimeout(2500);
+  await page.evaluate(() => ((document.getElementById('d') as HTMLDetailsElement).open = false));
+  await expect.poll(status, { timeout: 20_000 }).toBe('orphan');
+});
+

@@ -51,7 +51,7 @@ export class AnchorManager {
   private lastRenderedCheck = 0;
   private renderedCheckDue = false;
   /** What a cut-short pass still has to do: its signals and how many entries are left. */
-  private carry: { text: boolean; layout: boolean; remaining: number } | null = null;
+  private carry: { text: boolean; layout: boolean; rendered: boolean; remaining: number } | null = null;
   /** Web components' shadow roots being watched (the document observer can't see into them). */
   private observedRoots = new WeakSet<ShadowRoot>();
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -80,7 +80,8 @@ export class AnchorManager {
         if (this.ignore(m.target)) continue;
         if (m.type === 'attributes') layout = true;
         else text = true;
-        if (text) break;
+        // Both kinds matter (a label change and a section closing can share a batch).
+        if (text && layout) break;
       }
       if (text) {
         this.dirty = true;
@@ -228,9 +229,10 @@ export class AnchorManager {
     let waiting = false;
     // A pass yields after a short time budget and continues on the next one,
     // so many (or expensive) threads never freeze the page.
-    // Rendered-text checks need a text index: at most every 2 s.
-    let renderedCheck = false;
-    if (layoutChanged || this.renderedCheckDue) {
+    // Rendered-text checks need a text index: at most every 2 s. A pass cut
+    // short keeps its obligation for the entries it didn't reach.
+    let renderedCheck = !!carried && carried.rendered;
+    if (!renderedCheck && (layoutChanged || this.renderedCheckDue)) {
       const wait = 2000 - (now - this.lastRenderedCheck);
       if (wait <= 0) {
         renderedCheck = true;
@@ -255,7 +257,7 @@ export class AnchorManager {
       if (k > 0 && performance.now() > deadline) {
         unfinished = true;
         this.cursor = (start + k) % list.length;
-        this.carry = { text: textChanged, layout: layoutChanged, remaining: count - k };
+        this.carry = { text: textChanged, layout: layoutChanged, rendered: renderedCheck, remaining: count - k };
         break;
       }
       if (e.state.status === 'anchored') {
