@@ -268,7 +268,9 @@ Choices made while building this without supervision, with the reasoning.
   account could fill a page with huge threads and make every visit build tens of megabytes
   (the 512 MB server ran out of memory in review). Sizes are measured in bytes, and stored text
   never contains control characters (other than tab/newline), which would defeat the
-  accounting. Email replies are read up to 2 MB of text; a longer one is refused as a whole
+  accounting. Email replies are read up to 2 MB of plain text (HTML-only ones up to 200 KB:
+  mail clients send a plain-text part too, and the HTML converter's work grows with crafted
+  markup); a longer one is refused as a whole
   (the verified sender gets it back), never posted in part; the same when the HTML converter
   has to skip content (too deep or too many children). Before conversion, one linear pass
   flattens element nesting beyond 32 levels (text kept; counted over matched elements only,

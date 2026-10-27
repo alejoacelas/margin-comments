@@ -521,3 +521,8 @@ Reviewer C found nothing material.
 
 All verified to fail on the previous code.
 
+Hardening after round 42 (our own): the HTML converter kept yielding size-amplification cases, so
+HTML-only replies are now read only up to 200 KB (refused whole above that, returned to the
+verified sender with a note to send plain text); plain text is still read up to 2 MB by our own
+linear rules. `email.test.ts` "an HTML-only reply over 200 KB is refused whole".
+

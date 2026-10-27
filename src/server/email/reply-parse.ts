@@ -5,6 +5,12 @@ import { convert } from 'html-to-text';
  * bounds memory). Their reply is reported as truncated, not posted in part.
  */
 const MAX_INPUT = 2_000_000;
+/**
+ * HTML-only replies are rare (mail clients send a plain-text part too) and
+ * go through a converter whose work can grow with crafted markup: they're
+ * read only up to this size; a longer one is refused whole.
+ */
+const MAX_HTML_INPUT = 200_000;
 
 /**
  * Extract just the new text from an email reply: drop quoted history
@@ -23,8 +29,10 @@ export function extractReply(text: string | null, html: string | null): string {
 export function extractReplyChecked(text: string | null, html: string | null): { text: string; truncated: boolean } {
   const useText = !!(text && text.trim());
   const source = useText ? text! : html ?? '';
-  const truncated = source.length > MAX_INPUT;
-  let body = useText ? source.slice(0, MAX_INPUT) : source ? htmlToText(source.slice(0, MAX_INPUT)) : '';
+  const limit = useText ? MAX_INPUT : MAX_HTML_INPUT;
+  if (!useText && source.length > limit) return { text: '', truncated: true };
+  const truncated = source.length > limit;
+  let body = useText ? source.slice(0, MAX_INPUT) : source ? htmlToText(source) : '';
   // The converter marks content it had to skip (too deep, too many children).
   let clipped = false;
   if (body.includes(CLIPPED)) {

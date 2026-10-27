@@ -241,8 +241,8 @@ describe('extractReply', () => {
   it('deeply nested ordinary tags are flattened before conversion (fast, text kept)', () => {
     for (const [html, last] of [
       ['<div>'.repeat(160000) + 'answer', ''],
-      ['<div>'.repeat(40000) + 'the answer', 'the answer'],
-      ['<span>'.repeat(20000) + 'x' + '</span>'.repeat(20000), 'x'],
+      ['<div>'.repeat(30000) + 'the answer', 'the answer'],
+      ['<span>'.repeat(10000) + 'x' + '</span>'.repeat(10000), 'x'],
     ] as const) {
       const t0 = performance.now();
       const out = extractReply(null, html);
@@ -281,6 +281,13 @@ describe('extractReply', () => {
       expect(process.memoryUsage().rss - before, html.slice(0, 20)).toBeLessThan(250 * 1024 * 1024);
       expect(out.text.length).toBeLessThan(2_100_000);
     }
+  });
+  it('an HTML-only reply over 200 KB is refused whole', async () => {
+    const { extractReplyChecked } = await import('../../src/server/email/reply-parse');
+    expect(extractReplyChecked(null, '<p>' + 'word '.repeat(50_000) + '</p>')).toEqual({ text: '', truncated: true });
+    expect(extractReplyChecked(null, '<p>A short answer.</p>')).toEqual({ text: 'A short answer.', truncated: false });
+    // The same text as plain text is fine.
+    expect(extractReplyChecked('word '.repeat(50_000), '<p>…</p>').truncated).toBe(false);
   });
   it('keeps text below separator lines', () => {
     expect(extractReply('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.', null)).toBe('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.');

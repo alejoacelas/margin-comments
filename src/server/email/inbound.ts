@@ -152,7 +152,14 @@ function decide(deps: InboundDeps, email: ReceivedEmail): InboundOutcome {
       reason: 'email too long',
       returnToSender:
         verdict === 'pass'
-          ? { to: user.email, threadId: target.threadId, reason: 'The email was too long to post (more than 2 MB of text).', text: body.slice(0, 100_000) }
+          ? {
+              to: user.email,
+              threadId: target.threadId,
+              reason: body
+                ? 'The email was too long to post (more than 2 MB of text).'
+                : 'The email was too long to read (an HTML-only email over 200 KB). Sending it as plain text works better.',
+              text: body.slice(0, 100_000),
+            }
           : undefined,
     };
   }
