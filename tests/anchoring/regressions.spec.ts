@@ -647,3 +647,23 @@ test('a maximum-length quote with one change is matched quickly (and still found
   expect(Math.abs(res.length - 50000)).toBeLessThan(100);
 });
 
+test('a long passage whose middle was rewritten is orphaned, not anchored to the new text', async ({ page }) => {
+  // Letters only (no spaces), so 25% of the quote survives exactly.
+  const letters = (seed: number, n: number, alphabet: string) => {
+    let x = seed;
+    return Array.from({ length: n }, () => alphabet[(x = (x * 1103515245 + 12345) % 2147483648) % alphabet.length]).join('');
+  };
+  const original = letters(1, 10240, 'abcdefghij');
+  await load(page, `<main><p id="p">${original}</p></main>`);
+  const result = await page.evaluate(([original, middle]) => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('p')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    // Keep the first and last 1,280 characters, rewrite the middle 7,680 entirely.
+    document.getElementById('p')!.textContent = original.slice(0, 1280) + middle + original.slice(-1280);
+    const out = mc.anchorSelectors(document.body, selectors);
+    return out ? out.quoteScore : null;
+  }, [original, letters(99, 7680, 'klmnopqrst')] as const);
+  expect(result).toBeNull();
+});

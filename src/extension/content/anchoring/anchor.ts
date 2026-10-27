@@ -798,7 +798,7 @@ function spanSimilarity(span: string, q: string): number {
       errors += best.errors;
       from = windowStart + best.end;
     } else {
-      errors += budget; // heavily edited here: count it and move on
+      errors += chunk.length; // nothing like it here: the whole chunk counts as changed
       from += chunk.length;
     }
   }

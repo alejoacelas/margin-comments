@@ -474,3 +474,11 @@ Reviewer B found nothing material.
 | A1 | **Matching a maximum-length (50,000-character) edited quote ran edit distances with a budget of 30% of the quote: ~7 s of frozen page per thread** | Fixed | The span is compared in 256-character chunks, each a bounded edit distance near its expected place (errors summed; ties resolved toward the expected alignment). Large-page test 25/25, verified corpus categories unchanged (3 unverified "other" cases now orphan instead of fuzzy). Anchoring regression "a maximum-length quote with one change is matched quickly (and still found)" (6.9 s before) |
 | A2 / C1 | Round 36's edit conflict check took its base at submit time, so a live update arriving while the editor was open became the base and the stale edit overwrote the newer text | Fixed | The base is captured when the edit begins and kept with the edit draft. e2e "an edit started before a newer edit elsewhere is refused, not saved over it"; verified to fail without the fix |
 
+## Round 38 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | Round 37's chunked comparison counted a chunk with no match as only its search budget (30%) changed, so a long passage with 75% rewritten could still anchor (score 0.77) | Fixed | An unmatched chunk counts as entirely changed. Corpus unchanged. Anchoring regression "a long passage whose middle was rewritten is orphaned…" (0.7744 before) |
+
