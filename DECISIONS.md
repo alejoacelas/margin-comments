@@ -44,7 +44,9 @@ Choices made while building this without supervision, with the reasoning.
   retry. That includes a passage whose middle gets hidden while its ends stay visible: after
   show/hide changes or elements being added or removed (at most every 2 s; pure text edits
   such as a ticking counter can't hide anything) each anchor's rendered characters (count plus
-  a hash) are compared with what they were.
+  a hash) are compared with what they were. CSS-only tabs change no DOM (`:checked` radios and
+  checkboxes, `:target`), so choosing one (its composed `input` event) or a fragment change
+  counts as a show/hide change too.
 - **Web components:** the text index walks the page as rendered: open shadow roots in place of
   their host's children, slots showing what's assigned to them (closed roots can't be read, by
   design). Selections inside a component come from `getComposedRanges`, their selectors are

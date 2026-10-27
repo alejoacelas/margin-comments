@@ -585,3 +585,14 @@ Reviewers B and C found nothing material.
 | # | Finding | Verdict | Fix / test |
 |---|---------|---------|------------|
 | A1 | The rendered-extent check ran only after attribute changes, so replacing elements (`innerHTML`) with the same raw text but a different alternative shown, or the passage's middle hidden, kept the old anchor | Fixed | Child-list mutations that add or remove elements also schedule the (2 s rate-limited) check; pure text edits don't, since they can't hide anything (index builds measured at 1–24 ms on the largest corpus pages). Anchoring regressions "replacing elements so another same-length alternative shows is noticed" and "replacing a passage's middle with the same words, hidden, is noticed"; both fail on the previous code |
+
+## Round 50 — full repository (2026-10-27)
+
+Reviewer B found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | CSS-only tabs (`:checked` radio panels, as in MkDocs Material) show and hide text without DOM mutations or resizes, so a thread stayed anchored in the hidden panel | Fixed | Choosing a radio, checkbox or select option (its composed `input` event, so web components count too) and fragment changes (`:target`) count as show/hide changes. E2E "a thread in a CSS-only tab … is orphaned while another tab shows" |
+| C1 | Cancel discarded the editor's `initial` prop, which follows the stored draft: after another tab extended the draft and closed, Cancel in an untouched tab deleted that extended text it never showed | Fixed | The editor keeps the text it opened with and discards only that and what it holds now. E2E "cancelling a restored draft doesn't delete the longer version another (closed) tab saved" |
+
+Both verified to fail on the previous code.

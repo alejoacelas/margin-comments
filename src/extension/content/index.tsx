@@ -473,7 +473,25 @@ class MarginComments implements Actions {
       { signal: this.abort.signal, passive: true },
     );
     window.addEventListener('popstate', () => this.checkUrl(), opts);
-    window.addEventListener('hashchange', () => this.checkUrl(), opts);
+    // Show/hide without DOM changes: CSS tabs driven by radio buttons or
+    // checkboxes (`:checked`) or by the URL fragment (`:target`). Their
+    // `input` events are composed, so controls in web components count too.
+    window.addEventListener(
+      'input',
+      e => {
+        const t = e.composedPath()[0];
+        if (t instanceof HTMLSelectElement || (t instanceof HTMLInputElement && (t.type === 'radio' || t.type === 'checkbox'))) this.anchors.layoutChanged();
+      },
+      passive,
+    );
+    window.addEventListener(
+      'hashchange',
+      () => {
+        this.checkUrl();
+        this.anchors.layoutChanged();
+      },
+      opts,
+    );
     window.addEventListener('pagehide', () => this.flushDrafts(), opts);
     document.addEventListener(
       'visibilitychange',

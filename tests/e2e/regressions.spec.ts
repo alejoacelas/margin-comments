@@ -829,3 +829,55 @@ test('drafts that differ only in whitespace are different drafts', async ({ alic
   expect(texts).toEqual([flat, indented, `${indented}  # checked`].sort());
 });
 
+test('a thread in a CSS-only tab (radio buttons, no DOM change) is orphaned while another tab shows', async ({ alice }) => {
+  const a = await alice.open(uniquePath('tabs'));
+  await alice.signIn(a);
+  await createThread(a, 'The tides follow the moon', 'On the first tab');
+  await a.keyboard.press('Escape');
+  const row = a.locator('[data-testid=sidebar-thread]').filter({ hasText: 'On the first tab' });
+  await a.locator('label[for=two]').click();
+  await alice.openSidebar(a);
+  await expect(row).toContainText('Text not found', { timeout: 10_000 });
+  await closeSidebar(a);
+  await a.locator('label[for=one]').click();
+  await alice.openSidebar(a);
+  await expect(row).not.toContainText('Text not found', { timeout: 10_000 });
+});
+
+test("cancelling a restored draft doesn't delete the longer version another (closed) tab saved", async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Open annotation standard', 'Thread for drafts');
+  await a.keyboard.press('Escape');
+  const box = (p: import('@playwright/test').Page) =>
+    p.locator('[data-testid=sidebar-thread]').frameLocator('iframe[data-testid=reply-input-frame]').locator('[data-testid=reply-input]');
+  const open = async (p: import('@playwright/test').Page) => {
+    await alice.openSidebar(p);
+    await p.locator('[data-testid=sidebar-thread]').click();
+    return box(p);
+  };
+  await (await open(a)).fill('Original thought');
+  await a.waitForTimeout(700);
+  await a.close();
+  // Two tabs restore the draft; B extends it and closes; A, untouched, cancels.
+  const tabA = await alice.open(path);
+  await expect(await open(tabA)).toHaveValue('Original thought');
+  const tabB = await alice.open(path);
+  const boxB = await open(tabB);
+  await expect(boxB).toHaveValue('Original thought');
+  await boxB.fill('Original thought, extended in tab B');
+  await tabB.waitForTimeout(700);
+  await tabB.close();
+  await tabA.waitForTimeout(300);
+  await tabA.locator('[data-testid=sidebar-thread] .text-btn').getByText('Cancel').click();
+  await tabA.waitForTimeout(300);
+  await tabA.close();
+  const c = await alice.open(path);
+  await alice.openSidebar(c);
+  await c.locator('[data-testid=sidebar-thread]').click();
+  const restored = await box(c).inputValue();
+  const listed = await c.locator('[data-testid=draft-row]').allInnerTexts();
+  expect([restored, ...listed].join('\n')).toContain('Original thought, extended in tab B');
+});
+

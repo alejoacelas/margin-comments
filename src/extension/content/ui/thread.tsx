@@ -39,6 +39,10 @@ function Editor(props: {
   testId?: string;
 }) {
   const [text, setText] = useState(props.initial);
+  // What the editor showed when it opened. `props.initial` follows the stored
+  // draft, which another tab may have changed since: discarding that version
+  // would delete text this tab never showed.
+  const shown = useRef(props.initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textRef = useRef(text);
@@ -84,14 +88,14 @@ function Editor(props: {
         onSubmit={v => void submit(v)}
         onEscape={v => {
           if (props.onEscape) props.onEscape();
-          else props.onCancel([props.initial, v]);
+          else props.onCancel([shown.current, v]);
         }}
       />
       {error ? <div class="error">{error}</div> : null}
       {props.pill ? (
         text.trim() ? (
           <div class="row-end">
-            <button class="text-btn" onClick={() => props.onCancel([props.initial, text])}>
+            <button class="text-btn" onClick={() => props.onCancel([shown.current, text])}>
               Cancel
             </button>
             <button class="pill-btn" disabled={busy} onClick={() => void submit()}>
@@ -101,7 +105,7 @@ function Editor(props: {
         ) : null
       ) : (
         <div class="row-end">
-          <button class="cancel-link" onClick={() => props.onCancel([props.initial, text])}>
+          <button class="cancel-link" onClick={() => props.onCancel([shown.current, text])}>
             cancel
           </button>
           <button

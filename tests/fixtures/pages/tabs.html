@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Tabs Fixture</title><link rel="canonical" href="http://localhost:18902/tabs"><style>
+body { font: 17px/1.6 Georgia, serif; max-width: 680px; margin: 40px auto; padding: 0 20px; color: #222; }
+.panel { height: 120px; }
+/* CSS-only tabs: choosing a tab changes no DOM, only which radio is :checked. */
+#one:checked ~ #b, #two:checked ~ #a { display: none; }
+</style></head>
+<body><main><h1>Tabs page</h1>
+<input type="radio" name="tab" id="one" checked><label for="one">First tab</label>
+<input type="radio" name="tab" id="two"><label for="two">Second tab</label>
+<div class="panel" id="a"><p>The tides follow the moon around the planet each day.</p></div>
+<div class="panel" id="b"><p>Mountain weather changes quickly above the tree line.</p></div>
+</main></body></html>
