@@ -57,6 +57,9 @@ Choices made while building this without supervision, with the reasoning.
   (never `document.evaluate`; the server refuses others), and an anchoring pass yields after 50 ms and continues on the next
   one where it stopped, so many threads (a page flooded with them) are anchored in slices and
   none is starved.
+- **Repeated quotes are re-checked when the page text changes:** an anchored thread whose quote
+  occurs more than once is matched again by context, so it follows its row when a table is
+  re-sorted in place (frameworks reuse the row nodes and rewrite their cells).
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
   context; short exact strings need context unless they're unique on the page; matches are only
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is
@@ -267,7 +270,8 @@ Choices made while building this without supervision, with the reasoning.
   (the verified sender gets it back), never posted in part; the same when the HTML converter
   has to skip content (too deep or too many children). Before conversion, one linear pass
   flattens element nesting beyond 32 levels (text kept; counted over matched elements only,
-  unmatched closing tags are dropped) and refuses mails with over 50,000 tags:
+  unmatched closing tags are dropped); lists and tables convert as plain blocks (numbering,
+  indentation and cell padding repeat per line and could multiply a crafted email) and refuses mails with over 50,000 tags:
   the converter builds the whole tree first and is quadratic on very deep ones. Received emails over 12 MB aren't
   downloaded, and at most three are fetched at once (Resend redelivers the rest). A returned
   reply carries at most 100,000 characters of the text, and the email worker loads one queued

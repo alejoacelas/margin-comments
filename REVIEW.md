@@ -498,3 +498,14 @@ Reviewers B and C found nothing material.
 |---|---------|---------|------------|
 | A1 | Fallback content of `<canvas>`, `<video>`, `<audio>`, `<iframe>`, `<object>` (not rendered when the element works) could enter quotes and stored context | Fixed | Treated like script text (counted in offsets, never quoted or matched). Anchoring regression "fallback content the browser doesn't render…"; verified to fail without the fix; corpus unchanged |
 
+## Round 41 — full repository (2026-10-27)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | A thread on a repeated phrase (e.g. "Pending approval" in a table) stayed on its old node when the surrounding text changed in place, so after an in-place sort it highlighted someone else's row | Fixed | On text changes, anchored threads with repeated quotes are matched again by context. Anchoring regression "a thread on a repeated cell follows its row when a table is re-sorted in place" |
+| B1 | **The HTML converter's list numbering and indentation repeated per line: a crafted 1 MB email expanded to ~660 MB** | Fixed | Lists and tables convert as plain blocks. `email.test.ts` "list numbering and indentation cannot multiply an HTML reply" |
+
+Both verified to fail on the previous code.
+

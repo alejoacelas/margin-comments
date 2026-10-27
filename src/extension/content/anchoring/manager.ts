@@ -277,6 +277,26 @@ export class AnchorManager {
           }
           continue;
         }
+        // A repeated quote whose surroundings changed (e.g. a sorted table
+        // reusing its row nodes): the anchored copy may no longer be the
+        // thread's one. Context decides, as when anchoring afresh.
+        if (stillValid && !upgrade && textChanged && e.exactStripped) {
+          const text = getIndex().text;
+          const first = text.indexOf(e.exactStripped);
+          if (first >= 0 && text.indexOf(e.exactStripped, first + 1) >= 0) {
+            try {
+              const alt = anchorSelectors(root, e.selectors, { index: getIndex() });
+              if (alt && !sameRange(alt.range, e.state.range)) {
+                e.state = { status: 'anchored', range: alt.range, fuzzy: alt.quoteScore < 1 };
+                e.anchoredText = stripWs(alt.range.toString());
+                changed = true;
+              }
+            } catch {
+              // keep the current anchor
+            }
+          }
+          continue;
+        }
         if (stillValid && !upgrade) continue;
         e.state = { status: 'pending' };
         e.tries = 0;
@@ -340,6 +360,10 @@ export class AnchorManager {
 // Every attribute: pages show and hide content through any of them (class,
 // style, hidden, open, but also data-* / aria-* matched by their CSS). Passes
 // are throttled, so busy attributes only cost a flag.
+function sameRange(a: Range, b: Range): boolean {
+  return a.startContainer === b.startContainer && a.startOffset === b.startOffset && a.endContainer === b.endContainer && a.endOffset === b.endOffset;
+}
+
 /** Longest stretch one anchoring pass runs before yielding to the page. */
 const PASS_BUDGET_MS = 50;
 

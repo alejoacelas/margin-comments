@@ -116,7 +116,7 @@ Reliability was the main goal. Highlights:
   visible with *Copy text*.
 - **Tests**: 61 end-to-end Playwright tests with the real extension (two users, live sync,
   email notify and reply through a fake Resend, offline, service worker restart, SPAs, CSP,
-  hostile pages, account switching, the closed production build, plain-HTTP and sandboxed pages), 103 server/unit tests, the anchoring corpus plus anchoring
+  hostile pages, account switching, the closed production build, plain-HTTP and sandboxed pages), 104 server/unit tests, the anchoring corpus plus anchoring
   regression and large-page performance tests, and a production smoke test on real sites
   (Wikipedia, GitHub, Hacker News, MDN). Every adversarial review round is logged in
   [`REVIEW.md`](REVIEW.md).

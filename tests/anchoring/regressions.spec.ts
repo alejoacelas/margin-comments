@@ -714,3 +714,29 @@ test("fallback content the browser doesn't render (canvas, media, frames) stays 
   }
 });
 
+test("a thread on a repeated cell follows its row when a table is re-sorted in place", async ({ page }) => {
+  const rows = ['Alice Johnson invoice 1042', 'Oliver Smith invoice 2077', 'Maria Lopez invoice 3150', 'Kenji Sato invoice 4411'];
+  await load(
+    page,
+    `<table>${rows.map((n, i) => `<tr><td id="n${i}">${n}</td><td id="s${i}">Pending approval</td></tr>`).join('')}</table>`,
+  );
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const r = document.createRange();
+    r.selectNodeContents(document.getElementById('s0')!);
+    const { selectors } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const where = () => page.evaluate(() => ((window as any).__m.get('t').range?.startContainer.parentElement as HTMLElement | undefined)?.id ?? null);
+  await expect.poll(where, { timeout: 10_000 }).toBe('s0');
+  // Sorting reuses the rows and rewrites their cells in place: Alice moves to the third row.
+  await page.evaluate(rows => {
+    const sorted = [rows[1], rows[2], rows[0], rows[3]];
+    sorted.forEach((n, i) => (document.getElementById(`n${i}`)!.textContent = n));
+  }, rows);
+  await expect.poll(where, { timeout: 10_000 }).toBe('s2');
+});
+

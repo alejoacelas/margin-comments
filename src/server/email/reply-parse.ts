@@ -194,6 +194,15 @@ function htmlToText(html: string): string {
       { selector: 'div.yahoo_quoted', format: 'skip' },
       { selector: 'style', format: 'skip' },
       { selector: 'head', format: 'skip' },
+      // Plain blocks: list numbering/indentation and table padding repeat per
+      // line and can multiply a crafted email's size many times over.
+      { selector: 'ul', format: 'block' },
+      { selector: 'ol', format: 'block' },
+      { selector: 'li', format: 'block' },
+      { selector: 'table', format: 'block' },
+      { selector: 'tr', format: 'block' },
+      { selector: 'td', format: 'block' },
+      { selector: 'th', format: 'block' },
     ],
   });
 }

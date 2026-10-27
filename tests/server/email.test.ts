@@ -257,6 +257,16 @@ describe('extractReply', () => {
       expect(performance.now() - t0, html.slice(0, 12)).toBeLessThan(1500);
     }
   });
+  it('list numbering and indentation cannot multiply an HTML reply', async () => {
+    const { extractReplyChecked } = await import('../../src/server/email/reply-parse');
+    const html = '<ol start="100000000000000000000"><li>'.repeat(15) + '<pre>' + 'x\n'.repeat(500000) + '</pre>' + '</li></ol>'.repeat(15);
+    const t0 = performance.now();
+    const before = process.memoryUsage().rss;
+    const out = extractReplyChecked(null, html);
+    expect(performance.now() - t0).toBeLessThan(3000);
+    expect(process.memoryUsage().rss - before).toBeLessThan(300 * 1024 * 1024);
+    expect(out.text.length).toBeLessThan(2_100_000);
+  });
   it('keeps text below separator lines', () => {
     expect(extractReply('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.', null)).toBe('Proposed plan:\n\n---\n\n1. Back up the database.\n2. Deploy on Friday.');
     expect(extractReply('Two options:\n===\nA or B.\n\nOn Mon, Bob wrote:\n> which?', null)).toBe('Two options:\n===\nA or B.');
