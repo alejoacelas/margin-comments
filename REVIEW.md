@@ -432,3 +432,9 @@ Reviewer C found nothing material.
 | A1 | **A stored selector with a one-letter quote and 400-character context froze every visitor's tab (each occurrence's context was fuzzy-scored; 8.6 s on a modest page, over a minute on a big one, repeated by orphan retries)** | Fixed | Matching uses at most 64 characters of context and scores at most 2000 occurrences (nearest the old position); the server refuses context over 64 characters. Anchoring regression "a stored selector built to be expensive… anchors or orphans quickly" (112 s before, under 1.5 s after); `api.test.ts` "quote context longer than 64 characters is refused" |
 | B1 | **The HTML converter builds the whole tree before its depth limits apply: 800 KB of nested `<div>`s blocked the server 4.4 s (quadratic)** | Fixed | A linear pre-pass flattens nesting beyond 32 levels (text kept) and refuses mails with over 50,000 tags. `email.test.ts` "deeply nested ordinary tags are flattened before conversion"; verified to fail without the fix |
 
+Also from our own audit after round 34: an anchoring pass processed every thread synchronously,
+so a page flooded with threads whose long quotes need fuzzy search could freeze the tab (1.5 s
+long task in the regression). Passes now yield after 50 ms and continue. Anchoring regression
+"many expensive threads are anchored in slices, never freezing the page"; verified to fail
+without the change.
+

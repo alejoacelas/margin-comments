@@ -51,7 +51,8 @@ Choices made while building this without supervision, with the reasoning.
 - **Bounded matching cost:** stored selectors come from any user, so matching uses at most 64
   characters of context (the server refuses longer; we store 32) and scores at most 2000
   occurrences of a quote (the nearest to its old position). A selector built to be expensive
-  can't freeze the page.
+  can't freeze the page, and an anchoring pass yields after 50 ms and continues on the next
+  one, so many threads (a page flooded with them) are anchored in slices.
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
   context; short exact strings need context unless they're unique on the page; matches are only
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is

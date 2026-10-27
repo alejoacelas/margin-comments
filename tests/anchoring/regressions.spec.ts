@@ -569,3 +569,27 @@ test('a stored selector built to be expensive (tiny quote, huge context) anchors
   expect(ms).toBeLessThan(1500);
 });
 
+test('many expensive threads are anchored in slices, never freezing the page', async ({ page }) => {
+  await load(page, `<main>${Array.from({ length: 3000 }, (_, i) => `<p>Paragraph ${i} with ordinary article words, sentences and some numbers ${i * 7}.</p>`).join('')}</main>`);
+  const longest = await page.evaluate(async () => {
+    const mc = (window as any).__mc;
+    // 300 threads whose long quotes aren't on the page: each needs a fuzzy search.
+    const threads = Array.from({ length: 300 }, (_, i) => ({
+      id: `t${i}`,
+      selectors: [{ type: 'TextQuoteSelector', exact: `missing passage ${i} `.repeat(150) }],
+    }));
+    let longestTask = 0;
+    const obs = new PerformanceObserver(list => {
+      for (const e of list.getEntries()) longestTask = Math.max(longestTask, e.duration);
+    });
+    obs.observe({ type: 'longtask', buffered: false } as any);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads(threads);
+    await new Promise(r => setTimeout(r, 8000));
+    obs.disconnect();
+    return longestTask;
+  });
+  expect(longest).toBeLessThan(400);
+});
+

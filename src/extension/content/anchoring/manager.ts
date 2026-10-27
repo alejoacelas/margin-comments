@@ -209,8 +209,16 @@ export class AnchorManager {
     const getIndex = () => (index ??= new TextIndex(root));
     let changed = false;
     let waiting = false;
+    // A pass yields after a short time budget and continues on the next one,
+    // so many (or expensive) threads never freeze the page.
+    const deadline = performance.now() + PASS_BUDGET_MS;
+    let unfinished = false;
 
     for (const e of this.entries.values()) {
+      if (performance.now() > deadline) {
+        unfinished = true;
+        break;
+      }
       if (e.state.status === 'anchored') {
         const stillValid = this.valid(e, e.state.range);
         // A fuzzy anchor is upgraded once the exact text appears (checked at
@@ -309,6 +317,12 @@ export class AnchorManager {
     if (nextRetry !== Infinity) this.schedule(Math.max(0, nextRetry - now));
     const built = index as TextIndex | null;
     if (built) this.observeShadowRoots(built);
+    if (unfinished) {
+      // The rest still needs this pass's signals.
+      this.dirty ||= textChanged;
+      this.layoutDirty ||= layoutChanged;
+      this.schedule(0);
+    }
     if (changed) this.onChange();
     this.onLayout();
   }
@@ -317,6 +331,9 @@ export class AnchorManager {
 // Every attribute: pages show and hide content through any of them (class,
 // style, hidden, open, but also data-* / aria-* matched by their CSS). Passes
 // are throttled, so busy attributes only cost a flag.
+/** Longest stretch one anchoring pass runs before yielding to the page. */
+const PASS_BUDGET_MS = 50;
+
 const OBSERVE: MutationObserverInit = {
   childList: true,
   subtree: true,
