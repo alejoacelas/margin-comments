@@ -4,6 +4,8 @@ Google Docs-style comment threads on any web page, as a Chrome extension. Select
 **Comment**, and talk about it in the margin. Threads are shared live with everyone signed in
 who visits the same page, and replies arrive (and can be answered) by email.
 
+**Retired on 2026-10-27.** The hosted backend at margin-comments.fly.dev has been shut down, so the steps below work only against a backend you deploy yourself (see `AGENTS.md`).
+
 ## Try it
 
 1. Download `margin-comments-extension.zip` from the

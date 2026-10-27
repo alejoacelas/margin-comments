@@ -298,3 +298,4 @@ Choices made while building this without supervision, with the reasoning.
 - One shared space in v1 (`group_id = 'public'` on every thread), with `groups` and
   `group_members` tables and access checks (`canAccessGroup`) on every read, write, live
   subscription and notification, so private groups only need UI and membership management.
+- 2026-10-27: Retired the project and destroyed the Fly app `margin-comments` (database and volume included); it was an experiment and held only test data.
