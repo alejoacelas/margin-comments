@@ -26,8 +26,9 @@ Choices made while building this without supervision, with the reasoning.
   and Hypothesis's own context could include an adjacent inline `<script>`'s data.
 - **Matching on whitespace-free text** (with a map back to DOM offsets), excluding
   `<script>/<style>/<noscript>/<template>/<textarea>` (a textarea's children are its initial
-  value, not what it shows), text in editors (`contenteditable`: someone's unsent writing; the
-  Comment button ignores editable text too) and text that isn't rendered (`hidden`, `display:none`,
+  value, not what it shows), text in editors (anything under a `contenteditable` editing host,
+  including its `contenteditable="false"` chips: someone's unsent writing; the Comment button
+  ignores editable text too) and text that isn't rendered (`hidden`, `display:none`,
   `visibility:hidden`, `content-visibility:hidden`, closed `<details>`, hidden slots; judged through the element the text
   renders in, i.e. its slot when slotted (for closed web components found through
   `chrome.dom.openOrClosedShadowRoot`; a child no slot shows isn't rendered), looking through
@@ -52,7 +53,8 @@ Choices made while building this without supervision, with the reasoning.
   characters of context (the server refuses longer; we store 32) and scores at most 2000
   occurrences of a quote (the nearest to its old position). A selector built to be expensive
   can't freeze the page, and an anchoring pass yields after 50 ms and continues on the next
-  one, so many threads (a page flooded with them) are anchored in slices.
+  one where it stopped, so many threads (a page flooded with them) are anchored in slices and
+  none is starved.
 - **Prefer orphaning to mis-anchoring:** fuzzy matches need ≥ 75% quote similarity plus
   context; short exact strings need context unless they're unique on the page; matches are only
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is
@@ -256,7 +258,9 @@ Choices made while building this without supervision, with the reasoning.
   has to skip content (too deep or too many children). Before conversion, one linear pass
   flattens element nesting beyond 32 levels (text kept) and refuses mails with over 50,000 tags:
   the converter builds the whole tree first and is quadratic on very deep ones. Received emails over 12 MB aren't
-  downloaded, and at most three are fetched at once (Resend redelivers the rest).
+  downloaded, and at most three are fetched at once (Resend redelivers the rest). A returned
+  reply carries at most 100,000 characters of the text, and the email worker loads one queued
+  message at a time.
 - **Extension storage:** `unlimitedStorage`, so drafts and queued changes never hit the 10 MB
   quota; if saving a draft keeps failing anyway, the page says so (the text stays in the editor).
 

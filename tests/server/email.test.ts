@@ -617,6 +617,16 @@ describe('notifications and inbound replies (through the API)', () => {
     for (const r of await Promise.all(first)) expect(r.statusCode).toBe(200);
   });
 
+  it('a returned reply carries at most 100,000 characters of the text', async () => {
+    const { queueReplyNotPosted } = await import('../../src/server/notifications');
+    t.provider.sent = [];
+    queueReplyNotPosted(t.queue, t.config, randomUUID(), 'alice@example.com', 'The thread is full.', 'x'.repeat(1_900_000));
+    await t.queue.tick();
+    const mail = t.provider.sent.find(s => s.msg.to === 'alice@example.com')!.msg;
+    expect(mail.text.length).toBeLessThan(110_000);
+    expect(mail.html!.length).toBeLessThan(200_000);
+  });
+
   it('unsubscribe links are signed and work with one-click POST', async () => {
     const { b, p } = await setup();
     await t.app.inject({ method: 'POST', url: `/api/threads/${p.id}/comments`, headers: auth(b.token), payload: { id: randomUUID(), body: 'x' } });

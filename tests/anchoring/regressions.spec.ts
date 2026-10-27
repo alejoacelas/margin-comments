@@ -544,6 +544,7 @@ test("text in an editor next to a selection (someone's unsent draft) stays out o
     '<div contenteditable="true">UNSENT: my medical diagnosis</div>',
     '<div contenteditable="plaintext-only">UNSENT: my medical diagnosis</div>',
     '<div contenteditable><p>UNSENT: my <b>medical diagnosis</b></p></div>',
+    '<div contenteditable="true">Unsent message <span contenteditable="false">@diagnosis chip</span></div>',
   ]) {
     await load(page, `<main><p id="p">An article paragraph to comment on.</p>${editor}</main>`);
     const json = await page.evaluate(() => {
@@ -591,5 +592,28 @@ test('many expensive threads are anchored in slices, never freezing the page', a
     return longestTask;
   });
   expect(longest).toBeLessThan(400);
+});
+
+test('with many anchored threads, every new thread still gets its turn', async ({ page }) => {
+  // About 45,000 characters: re-validating 300 anchors on it takes a pass's whole budget.
+  const passage = Array.from({ length: 700 }, (_, i) => `Sentence ${i} of a long shared passage that many threads quote.`).join(' ');
+  await load(page, `<main><p id="big">${passage}</p>${Array.from({ length: 2000 }, (_, i) => `<p>Paragraph ${i} of filler text.</p>`).join('')}<p id="last">The very last paragraph on the page.</p></main>`);
+  const pending = await page.evaluate(async () => {
+    const mc = (window as any).__mc;
+    const describe = (id: string) => {
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById(id)!);
+      return mc.describeRange(document.body, r).selectors;
+    };
+    const big = describe('big');
+    const threads = Array.from({ length: 300 }, (_, i) => ({ id: `t${i}`, selectors: big }));
+    threads.push({ id: 'late', selectors: describe('last') });
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.setThreads(threads);
+    await new Promise(r => setTimeout(r, 8000));
+    return threads.filter(t => m.get(t.id).status === 'pending').map(t => t.id);
+  });
+  expect(pending).toEqual([]);
 });
 

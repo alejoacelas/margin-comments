@@ -85,8 +85,11 @@ function rendered(el: Element, cache: VisibilityCache): boolean {
 function editable(node: Node, cache: VisibilityCache): boolean {
   const el = renderingParent(node, cache);
   if (!el) return false;
+  if (el.ownerDocument.designMode === 'on') return true;
   for (let e: Element | null = el; e; ) {
-    if ((e as HTMLElement).isContentEditable) return true;
+    // Anything inside an editing host, including its contenteditable="false"
+    // islands (mention chips, attachment labels).
+    if ((e as HTMLElement).isContentEditable || e.closest(EDITING_HOST)) return true;
     const root = e.getRootNode();
     // An editing host doesn't reach into a component's shadow root, but a
     // component inside an editor is still part of the editor's content.
@@ -94,6 +97,8 @@ function editable(node: Node, cache: VisibilityCache): boolean {
   }
   return false;
 }
+
+const EDITING_HOST = '[contenteditable=""], [contenteditable="true" i], [contenteditable="plaintext-only" i]';
 
 /** `content-visibility: hidden`: the element's box shows, its contents don't. */
 function contentHidden(el: Element): boolean {

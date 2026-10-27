@@ -79,8 +79,12 @@ export function notifyNewComment(db: DB, queue: EmailQueue, config: Config, thre
   }
 }
 
+/** Most of a reply's text sent back in a "couldn't be posted" email (their own copy has all of it). */
+const RETURNED_TEXT_MAX = 100_000;
+
 export function queueReplyNotPosted(queue: EmailQueue, config: Config, emailId: string, to: string, reason: string, text: string) {
-  const content = replyNotPostedEmail({ reason, text });
+  const returned = text.length > RETURNED_TEXT_MAX ? `${text.slice(0, RETURNED_TEXT_MAX)}\n\n[… the rest is in the email you sent]` : text;
+  const content = replyNotPostedEmail({ reason, text: returned });
   queue.enqueue('reply-not-posted', { to, from: fromAddress(config), subject: content.subject, text: content.text, html: content.html }, `reply-not-posted/${emailId}`);
 }
 

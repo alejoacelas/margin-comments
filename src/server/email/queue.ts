@@ -82,14 +82,15 @@ export class EmailQueue {
     try {
       do {
         this.kick = false;
+        // Ids first, then one message at a time: a backlog of big emails is
+        // never all in memory at once.
         const due = this.db
-          .prepare(
-            `SELECT * FROM email_jobs WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT 20`,
-          )
-          .all(nowIso()) as JobRow[];
-        for (const job of due) {
+          .prepare(`SELECT id FROM email_jobs WHERE status = 'pending' AND next_attempt_at <= ? ORDER BY next_attempt_at LIMIT 20`)
+          .all(nowIso()) as Array<{ id: string }>;
+        for (const { id } of due) {
           if (this.stopped) return;
-          await this.process(job);
+          const job = this.db.prepare(`SELECT * FROM email_jobs WHERE id = ? AND status = 'pending'`).get(id) as JobRow | undefined;
+          if (job) await this.process(job);
         }
       } while (this.kick && !this.stopped);
     } finally {

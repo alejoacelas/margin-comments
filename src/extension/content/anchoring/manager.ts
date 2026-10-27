@@ -44,6 +44,8 @@ const MAX_WAIT_MS = 6000;
 export class AnchorManager {
   private entries = new Map<string, Entry>();
   private observer: MutationObserver | null = null;
+  /** Where the next pass starts (after a pass that ran out of time). */
+  private cursor = 0;
   /** Web components' shadow roots being watched (the document observer can't see into them). */
   private observedRoots = new WeakSet<ShadowRoot>();
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -213,10 +215,17 @@ export class AnchorManager {
     // so many (or expensive) threads never freeze the page.
     const deadline = performance.now() + PASS_BUDGET_MS;
     let unfinished = false;
+    // Resume where the last (cut-short) pass stopped, so threads late in the
+    // list aren't starved by the ones before them.
+    const list = [...this.entries.values()];
+    const start = list.length ? this.cursor % list.length : 0;
+    this.cursor = 0;
 
-    for (const e of this.entries.values()) {
-      if (performance.now() > deadline) {
+    for (let k = 0; k < list.length; k++) {
+      const e = list[(start + k) % list.length];
+      if (k > 0 && performance.now() > deadline) {
         unfinished = true;
+        this.cursor = (start + k) % list.length;
         break;
       }
       if (e.state.status === 'anchored') {

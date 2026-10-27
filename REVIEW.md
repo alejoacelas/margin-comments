@@ -438,3 +438,15 @@ long task in the regression). Passes now yield after 50 ms and continue. Anchori
 "many expensive threads are anchored in slices, never freezing the page"; verified to fail
 without the change.
 
+## Round 35 — full repository (2026-10-27)
+
+Reviewer C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | **`contenteditable="false"` islands inside an editor (mention chips, attachment labels) weren't treated as editor text and could enter stored context** | Fixed | Anything under an editing host counts as editor text (also `designMode`). Added to the anchoring regression "text in an editor next to a selection…" |
+| A2 | Time-sliced passes restarted at the first thread, so with many anchored threads later ones could stay pending forever | Fixed | Passes resume where the last stopped. Anchoring regression "with many anchored threads, every new thread still gets its turn" (215 left pending before) |
+| B1 | **The email worker loaded 20 full messages per batch; a backlog of large returned replies reached ~800 MB** | Fixed | Job ids first, one message loaded at a time; a returned reply carries at most 100,000 characters. `email.test.ts` "a returned reply carries at most 100,000 characters of the text" |
+
+All verified to fail on the previous code.
+
