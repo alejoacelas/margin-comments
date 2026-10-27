@@ -757,10 +757,28 @@ class MarginComments implements Actions {
   }
 
   async edit(thread: ViewThread, commentId: string, body: string, draftKey: string) {
-    // The text being replaced: the server refuses the edit if the comment has
-    // changed since (e.g. a retry of an old edit after a newer one elsewhere).
-    const base = thread.comments.find(c => c.id === commentId)?.body;
+    // The text the edit started from (not what the comment says now: a live
+    // update may have replaced it while this editor was open). The server
+    // refuses the edit if the comment has changed since.
+    const base = this.editBases.get(draftKey) ?? thread.comments.find(c => c.id === commentId)?.body;
     await this.mutate({ kind: 'editComment', threadId: thread.id, pageKeys: this.keysFor(thread), commentId, body, base }, draftKey, body);
+    this.editBases.delete(draftKey);
+  }
+
+  /** Bases of open edits, by draft key. */
+  private editBases = new Map<string, string>();
+
+  beginEdit(draftKey: string, currentBody: string) {
+    if (this.editBases.has(draftKey)) return;
+    // An edit restored from a saved draft keeps the base it started from.
+    const saved = this.store.state.drafts
+      .filter(d => d.key === draftKey && d.base !== undefined)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    this.editBases.set(draftKey, saved?.base ?? currentBody);
+  }
+
+  endEdit(draftKey: string) {
+    this.editBases.delete(draftKey);
   }
 
   async remove(thread: ViewThread, commentId: string) {
@@ -806,6 +824,7 @@ class MarginComments implements Actions {
       // Whose text this is, even if the account changes before it's saved.
       userId: this.store.state.user?.id,
       instanceId: this.instanceId,
+      base: key.startsWith('edit:') ? this.editBases.get(key) : undefined,
     };
     const slot = this.slot(key);
     const existing = this.draftTimers.get(slot);

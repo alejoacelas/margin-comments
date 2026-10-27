@@ -17,6 +17,10 @@ export interface Actions {
   cancelComposer(): void;
   reply(thread: ViewThread, commentId: string, body: string, draftKey: string): Promise<void>;
   edit(thread: ViewThread, commentId: string, body: string, draftKey: string): Promise<void>;
+  /** An edit starts: remember the text it's based on (kept with its draft). */
+  beginEdit(draftKey: string, currentBody: string): void;
+  /** An edit was cancelled or sent. */
+  endEdit(draftKey: string): void;
   remove(thread: ViewThread, commentId: string): Promise<void>;
   setResolved(thread: ViewThread, resolved: boolean): Promise<void>;
   retryOp(opId: string): void;

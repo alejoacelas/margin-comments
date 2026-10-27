@@ -38,6 +38,8 @@ export type Draft = {
   userId?: string;
   /** The page instance (tab) whose editor wrote it. */
   instanceId?: string;
+  /** Edit drafts: the comment's text when the edit began (the server refuses the edit if it changed since). */
+  base?: string;
 };
 
 export type Connection = 'online' | 'connecting' | 'offline';

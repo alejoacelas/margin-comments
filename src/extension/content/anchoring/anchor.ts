@@ -757,16 +757,53 @@ function matchLongQuote(
       const end = windowStart + t.end;
       const span = end - start;
       if (span < q.length * 0.5 || span > q.length * 1.5) continue;
-      const maxErrors = Math.ceil(q.length * 0.3);
-      const m = approxSearch(text.slice(start, end), q, maxErrors);
-      const errors = m.length ? Math.min(...m.map(x => x.errors)) : Math.abs(span - q.length) + maxErrors;
-      const quoteScore = Math.max(0, 1 - errors / q.length);
+      const quoteScore = spanSimilarity(text.slice(start, end), q);
       const score = (50 * quoteScore + 20 * h.prefixScore + 20 * t.suffixScore + 2) / 92;
       out.push({ start, end, score, quoteScore, prefixScore: h.prefixScore, suffixScore: t.suffixScore });
     }
   }
   out.sort((a, b) => b.score - a.score);
   return out;
+}
+
+/**
+ * How much of quote `q` a candidate span still contains, in 0..1 (1 minus
+ * the share of edited characters), at a cost linear in the quote: stored
+ * quotes come from any user, and one edit distance with a budget proportional
+ * to a 50,000-character quote froze the page. Short quotes: one bounded edit
+ * distance. Long ones: edit distances of 256-character chunks, each searched
+ * in a small window around where it should be, summed.
+ */
+function spanSimilarity(span: string, q: string): number {
+  const CHUNK = 256;
+  if (q.length <= 2048) {
+    const maxErrors = Math.ceil(q.length * 0.3);
+    const m = approxSearch(span, q, maxErrors);
+    const errors = m.length ? Math.min(...m.map(x => x.errors)) : Math.abs(span.length - q.length) + maxErrors;
+    return Math.max(0, 1 - errors / q.length);
+  }
+  const SLACK = 128;
+  let errors = 0;
+  let from = 0;
+  for (let i = 0; i < q.length; i += CHUNK) {
+    const chunk = q.slice(i, i + CHUNK);
+    const budget = Math.ceil(chunk.length * 0.3);
+    const windowStart = Math.max(0, from - SLACK);
+    const m = approxSearch(span.slice(windowStart, from + chunk.length + SLACK), chunk, budget);
+    if (m.length) {
+      // Fewest errors; among equals (repetitive text), the one ending nearest
+      // where it should, so the alignment doesn't drift.
+      const expected = from + chunk.length - windowStart;
+      const best = m.reduce((a, b) => (b.errors < a.errors || (b.errors === a.errors && Math.abs(b.end - expected) < Math.abs(a.end - expected)) ? b : a));
+      errors += best.errors;
+      from = windowStart + best.end;
+    } else {
+      errors += budget; // heavily edited here: count it and move on
+      from += chunk.length;
+    }
+  }
+  errors += Math.abs(span.length - from); // text left over (or missing) at the end
+  return Math.max(0, 1 - errors / q.length);
 }
 
 export function quoteOf(selectors: Selector[]): string {

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'preact/hooks';
+import { useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { Me } from '../../../shared/types';
 import { LIMITS } from '../../../shared/types';
 import type { Draft, Op } from '../../messages';
@@ -133,6 +133,11 @@ function CommentItem(props: {
   const [editing, setEditing] = useState(editDraft !== undefined && editDraft.trim() !== '');
   const [confirming, setConfirming] = useState(false);
   const own = !!user && comment.author.id === user.id;
+  // The text an edit replaces is fixed when the edit begins (live updates
+  // can change the comment meanwhile; the server then refuses the edit).
+  useLayoutEffect(() => {
+    if (editing) actions.beginEdit(editKey, comment.body);
+  }, [editing]);
 
   return (
     <div class="comment" data-comment-id={comment.id} data-testid="comment">
@@ -161,6 +166,7 @@ function CommentItem(props: {
             }}
             onCancel={texts => {
               actions.deleteDraft(editKey, texts);
+              actions.endEdit(editKey);
               setEditing(false);
             }}
           />

@@ -632,3 +632,18 @@ test('a stored selector with a hostile XPath is ignored, not evaluated', async (
   expect(res.ms).toBeLessThan(500);
 });
 
+test('a maximum-length quote with one change is matched quickly (and still found)', async ({ page }) => {
+  const q = 'Thequickbrownfoxjumpsoverthelazydogandthenrests.'.repeat(1100).slice(0, 50000);
+  const shown = q.slice(0, 25000) + 'X' + q.slice(25001);
+  await load(page, `<main><p id="p">${shown}</p></main>`);
+  const res = await page.evaluate(q => {
+    const mc = (window as any).__mc;
+    const t0 = performance.now();
+    const out = mc.anchorSelectors(document.body, [{ type: 'TextQuoteSelector', exact: q }]);
+    return { ms: performance.now() - t0, anchored: !!out, length: out ? out.range.toString().length : 0 };
+  }, q);
+  expect(res.ms).toBeLessThan(1500);
+  expect(res.anchored).toBe(true);
+  expect(Math.abs(res.length - 50000)).toBeLessThan(100);
+});
+

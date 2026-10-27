@@ -1,4 +1,4 @@
-import { API, createThread, expect, FAKE, highlightTexts, test, waitForEmail , uniquePath } from './helpers';
+import { API, createThread, expect, FAKE, highlightTexts, test, textCenter, waitForEmail, uniquePath } from './helpers';
 
 test.afterEach(async ({ alice, bob }) => {
   expect([...alice.errors, ...bob.errors], 'host page console errors').toEqual([]);
@@ -215,5 +215,36 @@ test("switching accounts drops the previous account's unsaved name edit", async 
   await expect(a.locator('.me .who')).toContainText(mallory);
   await expect(a.locator('iframe[data-testid=name-input-frame]')).toHaveCount(0);
   await expect(a.locator('.me .who')).not.toContainText('Alice Unsaved Rename');
+});
+
+test('an edit started before a newer edit elsewhere is refused, not saved over it', async ({ alice }) => {
+  const path = uniquePath('article');
+  const a = await alice.open(path);
+  await alice.signIn(a);
+  await createThread(a, 'Open annotation standard', 'Original text');
+  // Tab A starts editing.
+  const cardA = a.locator('[data-testid=thread-card]');
+  await cardA.locator('[data-testid=comment]').first().hover();
+  await cardA.locator('[data-testid=edit]').click();
+  const editA = cardA.frameLocator('iframe[data-testid=edit-input-frame]').locator('[data-testid=edit-input]');
+  await editA.fill('Edit from tab A');
+  // Tab B edits the same comment and saves; A receives it live while still editing.
+  const b = await alice.open(path);
+  await b.mouse.click(...(Object.values(await textCenter(b, 'Open annotation')) as [number, number]));
+  const cardB = b.locator('[data-testid=thread-card]');
+  await cardB.locator('[data-testid=comment]').first().hover();
+  await cardB.locator('[data-testid=edit]').click();
+  const editB = cardB.frameLocator('iframe[data-testid=edit-input-frame]').locator('[data-testid=edit-input]');
+  await editB.fill('Edit from tab B');
+  await editB.press('Enter');
+  await expect(cardB.locator('[data-testid=comment-body]').first()).toHaveText('Edit from tab B');
+  await a.waitForTimeout(1500);
+  // A submits its (stale) edit: refused, kept visible as not saved.
+  await editA.press('Enter');
+  await expect(cardA.locator('.c-status.failed')).toContainText('changed elsewhere', { timeout: 15_000 });
+  const token = await alice.sw.evaluate(async () => ((await chrome.storage.local.get('session')).session as { token: string }).token);
+  const key = encodeURIComponent(`localhost:18902${path}`);
+  const r = await (await fetch(`${API}/api/threads?key=${key}`, { headers: { authorization: `Bearer ${token}` } })).json();
+  expect(r.threads[0].comments[0].body).toBe('Edit from tab B');
 });
 

@@ -61,7 +61,8 @@ Choices made while building this without supervision, with the reasoning.
   trusted after the page has stopped changing for 1.5 s (or 6 s passed), and a fuzzy anchor is
   upgraded if the exact text appears later. Orphans always stay listed in the sidebar.
 - **Very long quotes** (> 1000 chars without an exact match) are matched by head and tail to
-  bound the cost.
+  bound the cost, and the span between is compared in 256-character chunks (each a bounded
+  edit distance near its expected place), so a 50,000-character quote costs milliseconds.
 - **Exact text elsewhere vs. the edited passage:** Hypothesis takes any exact occurrence over a
   near match. When the only exact copy sits in mostly different surroundings (context < 50%) and
   a near match (≥ 85% of the quote, ≥ 20 chars) sits in the original surroundings (≥ 95% both
@@ -237,8 +238,9 @@ Choices made while building this without supervision, with the reasoning.
   such as indentation is meaningful. Cancel/Discard delete by the text the user was
   looking at, never a different text, and never the draft of another tab that is still open. A
   change is only ever queued under the account it was typed in.
-- **Edits carry the text they started from:** the server applies an edit only if the comment
-  still has that text (or already has the new text: an idempotent retry); otherwise it's a
+- **Edits carry the text they started from** (captured when the edit begins and kept with its
+  draft, not read at submit time: a live update can change the comment meanwhile): the server
+  applies an edit only if the comment still has that text (or already has the new text: an idempotent retry); otherwise it's a
   conflict, and the edit stays visible as unsaved with Copy text. A late retry of an old edit
   can't overwrite a newer one made elsewhere.
 - **Worker lifecycle:** a 20 s ping keeps the worker alive while pages are open; content scripts
