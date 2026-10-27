@@ -870,3 +870,28 @@ test('a collapse is noticed for a thread late in a long list (the check survives
   await expect.poll(status, { timeout: 20_000 }).toBe('orphan');
 });
 
+test('a passage whose shown alternative is swapped for one of the same length stops being anchored', async ({ page }) => {
+  await load(page, `<main><p id="p">Account: <span id="a">1111111111 Alice Smith balance 111.11</span><span id="b" hidden>9999999999 Bobby Jones balance 999.99</span>.</p></main>`);
+  await page.evaluate(() => {
+    const mc = (window as any).__mc;
+    const p = document.getElementById('p')!;
+    const r = document.createRange();
+    r.setStart(p.firstChild!, 0);
+    r.setEnd(p.lastChild!, 1);
+    const { selectors, range } = mc.describeRange(document.body, r);
+    const m = new mc.AnchorManager(() => document.body, () => false, () => {});
+    m.start();
+    m.seed('t', selectors, range);
+    m.setThreads([{ id: 't', selectors }]);
+    (window as any).__m = m;
+  });
+  const status = () => page.evaluate(() => (window as any).__m.get('t').status);
+  await expect.poll(status, { timeout: 10_000 }).toBe('anchored');
+  await page.waitForTimeout(2500); // past the rendered-check cooldown
+  await page.evaluate(() => {
+    document.getElementById('a')!.hidden = true;
+    document.getElementById('b')!.hidden = false;
+  });
+  await expect.poll(status, { timeout: 10_000 }).toBe('orphan');
+});
+

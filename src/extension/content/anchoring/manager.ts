@@ -13,8 +13,8 @@ type Entry = {
   state: AnchorState;
   /** Whitespace-free text the range covered when anchored (validity check). */
   anchoredText: string;
-  /** How many of its characters were rendered (hidden parts excluded); null until measured. */
-  anchoredRendered: number | null;
+  /** Fingerprint of its rendered characters (hidden parts excluded); null until measured. */
+  anchoredRendered: string | null;
   createdAt: number;
   tries: number;
   nextTry: number;
@@ -263,7 +263,8 @@ export class AnchorManager {
       if (e.state.status === 'anchored') {
         let stillValid = this.valid(e, e.state.range);
         // Something was shown or hidden: part of the passage may now be hidden
-        // while its ends (and its raw text) are unchanged. Compare what's rendered.
+        // (or swapped for another, same-length alternative) while its ends and
+        // raw text are unchanged. Compare what's rendered.
         if (stillValid && renderedCheck) {
           const rendered = renderedOf(getIndex(), e.state.range);
           if (e.anchoredRendered === null) e.anchoredRendered = rendered;
@@ -406,8 +407,8 @@ export class AnchorManager {
 // style, hidden, open, but also data-* / aria-* matched by their CSS). Passes
 // are throttled, so busy attributes only cost a flag.
 /** How many of a range's characters are rendered (hidden parts excluded). */
-function renderedOf(index: TextIndex, range: Range): number {
-  return index.renderedCount(range);
+function renderedOf(index: TextIndex, range: Range): string {
+  return index.renderedFingerprint(range) ?? 'unwalked';
 }
 
 function sameRange(a: Range, b: Range): boolean {

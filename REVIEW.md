@@ -553,3 +553,11 @@ Reviewers B and C found nothing material.
 | A2 | A time-sliced pass didn't carry its rendered-extent check into its continuations, so threads late in a long list were never re-checked after a collapse | Fixed | The continuation keeps the check. Anchoring regression "a collapse is noticed for a thread late in a long list" (300 threads before it) |
 
 Both verified to fail on the previous code.
+
+## Round 46 — full repository (2026-10-27)
+
+Reviewers B and C found nothing material.
+
+| # | Finding | Verdict | Fix / test |
+|---|---------|---------|------------|
+| A1 | The rendered-extent check compared only a character count, so a passage whose shown alternative was swapped for a hidden one of the same length (e.g. two equal-length account records) stayed anchored on the new text | Fixed | The baseline is a fingerprint (count plus a hash of the rendered characters, one linear pass over the passage). Anchoring regression "a passage whose shown alternative is swapped for one of the same length stops being anchored"; verified to fail on the previous code |

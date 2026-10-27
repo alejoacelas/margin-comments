@@ -388,14 +388,23 @@ export class TextIndex {
   }
 
   /**
-   * How many rendered (non-space, not hidden) characters a DOM range covers;
-   * -1 if its ends aren't in walked text. Cheap: two lookups.
+   * A fingerprint of the rendered (non-space, not hidden) characters a DOM
+   * range covers: their count and a hash, so it changes when what's shown
+   * changes, even at the same length. Null if its ends aren't in walked text.
    */
-  renderedCount(range: Range): number {
+  renderedFingerprint(range: Range): string | null {
     const a = this.rawOffsetOfBoundary(range.startContainer, range.startOffset, true);
     const b = this.rawOffsetOfBoundary(range.endContainer, range.endOffset, false);
-    if (a === null || b === null) return -1;
-    return Math.max(0, this.fromRaw(b) - this.fromRaw(a));
+    if (a === null || b === null) return null;
+    const from = this.fromRaw(a);
+    const to = Math.max(from, this.fromRaw(b));
+    // FNV-1a over the characters.
+    let h = 0x811c9dc5;
+    for (let i = from; i < to; i++) {
+      h ^= this.text.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    return `${to - from}:${(h >>> 0).toString(36)}`;
   }
 
   /** Like rawOffsetOf, also for a boundary between nodes (an element or shadow root container). */
